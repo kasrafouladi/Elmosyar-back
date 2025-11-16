@@ -10,7 +10,7 @@ import json
 from datetime import timedelta
 
 from .models import User
-from .models import Post, PostMedia, Like, Comment, Notification
+from .models import Post, PostMedia, Like, Comment, Notification, Reaction
 import mimetypes
 
 
@@ -30,18 +30,22 @@ def serialize_post(post):
         'tags': [t.strip() for t in post.tags.split(',')] if post.tags else [],
         'mentions': [u.username for u in post.mentions.all()],
         'media': media_list,
-        'likes_count': post.likes.count(),
+        'likes_count': post.reactions.filter(reaction='like').count(),
+        'dislikes_count': post.reactions.filter(reaction='dislike').count(),
         'comments_count': post.comments.count(),
         'reposts_count': post.reposts.count(),
+        'replies_count': post.replies.count(),
         'is_repost': post.is_repost,
         'original_post_id': post.original_post.id if post.original_post else None,
+        'parent_id': post.parent.id if post.parent else None,
+        'category': post.category,
     }
 
 
 @require_http_methods(["GET"])
 
 def posts_page(request):
-    return render(request, 'posts.html')
+    return render(request, 'posts/posts.html')
 def index(request):
     return render(request, "index.html")
 
@@ -146,11 +150,17 @@ def posts_list_create(request):
     content = request.POST.get('content', '').strip()
     tags = request.POST.get('tags', '').strip()
     mentions_raw = request.POST.get('mentions', '').strip()
+    parent_id = request.POST.get('parent')
+    category = request.POST.get('category', '').strip()
 
     if not content and not request.FILES:
         return JsonResponse({'success': False, 'message': 'Post content or media required'}, status=400)
 
-    post = Post.objects.create(author=request.user, content=content, tags=tags)
+    parent = None
+    if parent_id:
+        parent = Post.objects.filter(id=parent_id).first()
+
+    post = Post.objects.create(author=request.user, content=content, tags=tags, parent=parent, category=category)
 
     # handle mentions
     if mentions_raw:
@@ -177,6 +187,7 @@ def posts_list_create(request):
     return JsonResponse({'success': True, 'post': serialize_post(post)}, status=201)
 
 
+
 @require_http_methods(["GET"])
 def post_detail(request, post_id):
     post = get_object_or_404(Post, id=post_id)
@@ -189,16 +200,22 @@ def post_like(request, post_id):
     if not request.user.is_authenticated:
         return JsonResponse({'success': False, 'message': 'Authentication required'}, status=401)
     post = get_object_or_404(Post, id=post_id)
-    like = Like.objects.filter(user=request.user, post=post).first()
-    if like:
-        like.delete()
-        return JsonResponse({'success': True, 'message': 'Unliked', 'likes_count': post.likes.count()})
+    # use Reaction to toggle like
+    r = Reaction.objects.filter(user=request.user, post=post).first()
+    if r and r.reaction == 'like':
+        r.delete()
+        likes_count = post.reactions.filter(reaction='like').count()
+        return JsonResponse({'success': True, 'message': 'Unliked', 'likes_count': likes_count})
     else:
-        Like.objects.create(user=request.user, post=post)
+        if r:
+            r.reaction = 'like'
+            r.save()
+        else:
+            Reaction.objects.create(user=request.user, post=post, reaction='like')
         # notify post author
         if post.author != request.user:
             Notification.objects.create(recipient=post.author, sender=request.user, notif_type='like', post=post, message=f'{request.user.username} liked your post')
-        return JsonResponse({'success': True, 'message': 'Liked', 'likes_count': post.likes.count()})
+        return JsonResponse({'success': True, 'message': 'Liked', 'likes_count': post.reactions.filter(reaction='like').count()})
 
 
 @csrf_exempt
@@ -227,15 +244,56 @@ def post_comment(request, post_id):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def post_dislike(request, post_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required'}, status=401)
+    post = get_object_or_404(Post, id=post_id)
+    r = Reaction.objects.filter(user=request.user, post=post).first()
+    if r and r.reaction == 'dislike':
+        r.delete()
+        dislikes_count = post.reactions.filter(reaction='dislike').count()
+        return JsonResponse({'success': True, 'message': 'Removed dislike', 'dislikes_count': dislikes_count})
+    else:
+        if r:
+            r.reaction = 'dislike'
+            r.save()
+        else:
+            Reaction.objects.create(user=request.user, post=post, reaction='dislike')
+        return JsonResponse({'success': True, 'message': 'Disliked', 'dislikes_count': post.reactions.filter(reaction='dislike').count()})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def post_repost(request, post_id):
     if not request.user.is_authenticated:
         return JsonResponse({'success': False, 'message': 'Authentication required'}, status=401)
     post = get_object_or_404(Post, id=post_id)
     new_post = Post.objects.create(author=request.user, content=post.content, is_repost=True, original_post=post, tags=post.tags)
+    # copy mentions
+    for mu in post.mentions.all():
+        new_post.mentions.add(mu)
+    # copy media references
+    for m in post.media.all():
+        PostMedia.objects.create(post=new_post, file=m.file, media_type=m.media_type)
     # notify original author
     if post.author != request.user:
         Notification.objects.create(recipient=post.author, sender=request.user, notif_type='repost', post=post, message=f'{request.user.username} reposted your post')
     return JsonResponse({'success': True, 'post': serialize_post(new_post)})
+
+
+@require_http_methods(["GET"])
+def posts_by_category(request, category_id):
+    posts = Post.objects.filter(category=category_id).select_related('author').prefetch_related('media', 'mentions').order_by('-created_at')[:100]
+    return JsonResponse({'success': True, 'posts': [serialize_post(p) for p in posts]})
+
+
+@require_http_methods(["GET"])
+def post_thread(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    data = serialize_post(post)
+    replies = [serialize_post(r) for r in post.replies.select_related('author').prefetch_related('media','mentions').order_by('created_at')]
+    data['replies'] = replies
+    return JsonResponse({'success': True, 'thread': data})
 
 
 @require_http_methods(["GET"])

@@ -16,8 +16,11 @@ urlpatterns = [
     path('api/posts/', views.posts_list_create, name='posts_list_create'),
     path('api/posts/<int:post_id>/', views.post_detail, name='post_detail'),
     path('api/posts/<int:post_id>/like/', views.post_like, name='post_like'),
+    path('api/posts/<int:post_id>/dislike/', views.post_dislike, name='post_dislike'),
     path('api/posts/<int:post_id>/comment/', views.post_comment, name='post_comment'),
     path('api/posts/<int:post_id>/repost/', views.post_repost, name='post_repost'),
+    path('api/posts/<int:post_id>/thread/', views.post_thread, name='post_thread'),
+    path('api/posts/category/<str:category_id>/', views.posts_by_category, name='posts_by_category'),
     # Notifications
     path('api/notifications/', views.notifications_list, name='notifications_list'),
     path('api/notifications/mark-read/', views.notifications_mark_read, name='notifications_mark_read'),

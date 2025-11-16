@@ -47,6 +47,10 @@ class Post(models.Model):
     content = models.TextField()
     image = models.ImageField(upload_to='posts/images/', blank=True, null=True)
     video = models.FileField(upload_to='posts/videos/', blank=True, null=True)
+    # Parent post: if this post is a reply to another post
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
+    # Category ID: posts can belong to categories/rooms (string id)
+    category = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     mentions = models.ManyToManyField(User, related_name='mentioned_in_posts', blank=True)
@@ -78,6 +82,24 @@ class Like(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         unique_together = ('user', 'post')
+
+
+class Reaction(models.Model):
+    REACTION_CHOICES = [
+        ("like", "Like"),
+        ("dislike", "Dislike"),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='reactions')
+    reaction = models.CharField(max_length=10, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # one reaction per user per post (type can be changed)
+        unique_together = ('user', 'post')
+
+    def __str__(self):
+        return f"{self.user.username} {self.reaction} on {self.post_id}"
 
 class Comment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
