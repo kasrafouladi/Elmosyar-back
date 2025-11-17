@@ -12,13 +12,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Security
 SECRET_KEY = config("SECRET_KEY", default='django-insecure-change-in-production')
 DEBUG = config("DEBUG", default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+
+ALLOWED_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1']
+
+CORS_ALLOWED_ORIGINS = [
+    f"http://{ALLOWED_HOSTS[0]}:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 # Codespaces configuration
 if 'CODESPACE_NAME' in os.environ:
     codespace_name = config("CODESPACE_NAME", default='')
     codespace_domain = config("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", default='')
     CSRF_TRUSTED_ORIGINS = [f'https://{codespace_name}-8000.{codespace_domain}']
+
+# Template settings
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
 
 # Apps
 INSTALLED_APPS = [
