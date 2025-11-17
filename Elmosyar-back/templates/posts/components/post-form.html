@@ -1,0 +1,14 @@
+<!-- Create Post Form -->
+<div id="new-post">
+    <h2>Create New Post</h2>
+    <form id="post-form" enctype="multipart/form-data">
+            <textarea id="post-content" placeholder="What's on your mind?" required></textarea><br>
+        <input type="file" id="post-media" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.zip,.rar"><br>
+            <input type="text" id="post-tags" placeholder="Tags (comma separated)"><br>
+            <input type="text" id="post-mentions" placeholder="Mentions (usernames, comma separated)"><br>
+            <input type="text" id="post-category" placeholder="Category / Room (optional)"><br>
+        <input type="hidden" id="post-parent" value=""><br>
+        <button type="submit">Post</button>
+    </form>
+    <div id="post-message"></div>
+</div>

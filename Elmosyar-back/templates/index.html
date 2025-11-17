@@ -160,6 +160,9 @@
             <form id="login-form">
                 <input type="text" id="login-username" placeholder="Username or Email" required>
                 <input type="password" id="login-password" placeholder="Password" required>
+                <label style="margin:8px 0;display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="login-remember"> Remember me
+                </label>
                 <button type="submit">Login</button>
             </form>
             <button onclick="showView('forgot-password')" class="secondary-button" style="margin-top: 10px;">Forgot Password?</button>
@@ -337,9 +340,10 @@
             e.preventDefault();
             const username_or_email = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
+            const remember = document.getElementById('login-remember') ? document.getElementById('login-remember').checked : false;
 
             const result = await apiCall('/api/login/', 'POST', {
-                username_or_email, password
+                username_or_email, password, remember
             });
 
             const message = document.getElementById('login-message');

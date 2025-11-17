@@ -1,3 +1,20 @@
+from django.views.decorators.http import require_http_methods
+@require_http_methods(["GET"])
+def create_post_page(request):
+    return render(request, 'posts/create_post.html')
+
+@require_http_methods(["GET"])
+def profile_page(request, username):
+    user = get_object_or_404(User, username=username)
+    return render(request, 'profile.html', {'profile_user': user})
+
+@require_http_methods(["GET"])
+def explore_room_page(request):
+    return render(request, 'explore_room.html')
+
+@require_http_methods(["GET"])
+def post_detail_page(request, post_id):
+    return render(request, 'posts/post_detail.html', {'post_id': post_id})
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -48,6 +65,12 @@ def posts_page(request):
     return render(request, 'posts/posts.html')
 def index(request):
     return render(request, "index.html")
+
+
+@require_http_methods(["GET"])
+def reset_password_page(request):
+    # Render a dedicated reset password page which will read token from query string
+    return render(request, 'reset_password.html')
 
 
 @csrf_exempt
@@ -366,6 +389,7 @@ def login_user(request):
         data = json.loads(request.body)
         username_or_email = data.get('username_or_email', '').strip()
         password = data.get('password', '')
+        remember = data.get('remember', False)
 
         if not all([username_or_email, password]):
             return JsonResponse({
@@ -387,6 +411,18 @@ def login_user(request):
                 }, status=400)
 
             login(request, user)
+            # Session expiry: if remember is true, persist session for 30 days.
+            # Otherwise, use a session cookie that expires on browser close.
+            if remember:
+                try:
+                    request.session.set_expiry(60 * 60 * 24 * 30)  # 30 days
+                except Exception:
+                    pass
+            else:
+                try:
+                    request.session.set_expiry(0)  # expire on browser close
+                except Exception:
+                    pass
             return JsonResponse({
                 'success': True,
                 'message': 'Login successful',
@@ -414,6 +450,7 @@ def login_user(request):
         }, status=500)
 
 
+@csrf_exempt
 @require_http_methods(["POST"])
 def logout_user(request):
     logout(request)
@@ -518,7 +555,8 @@ def request_password_reset(request):
             user.save()
 
             host = request.scheme + '://' + request.get_host()
-            reset_link = f"{host}/api/password-reset/{reset_token}/"
+            # Link to dedicated frontend reset page with token as query param so user can enter new password
+            reset_link = f"{host}/reset-password/?token={reset_token}"
             send_mail(
                 'Password Reset Request',
                 f'Click this link to reset your password: {reset_link}',

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="create-post-page">
+    <h2>Create a Post</h2>
+    <form id="create-post-form" enctype="multipart/form-data">
+        <textarea id="post-content" placeholder="What's on your mind?" required></textarea><br>
+        <input type="file" id="post-media" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.zip,.rar"><br>
+        <input type="text" id="post-tags" placeholder="Tags (comma separated)"><br>
+        <input type="text" id="post-mentions" placeholder="Mentions (usernames, comma separated)"><br>
+        <input type="text" id="post-category" placeholder="Room (category, optional)"><br>
+        <button type="submit">Post</button>
+    </form>
+    <div id="post-message"></div>
+</div>
+{% endblock %}

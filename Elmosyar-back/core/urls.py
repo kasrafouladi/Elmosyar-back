@@ -25,4 +25,9 @@ urlpatterns = [
     path('api/notifications/', views.notifications_list, name='notifications_list'),
     path('api/notifications/mark-read/', views.notifications_mark_read, name='notifications_mark_read'),
     path('posts/', views.posts_page, name='posts_page'),
+    path('reset-password/', views.reset_password_page, name='reset_password_page'),
+    path('posts/create/', views.create_post_page, name='create_post_page'),
+    path('profile/<str:username>/', views.profile_page, name='profile_page'),
+    path('explore/', views.explore_room_page, name='explore_room_page'),
+    path('posts/<int:post_id>/', views.post_detail_page, name='post_detail_page'),
 ]

@@ -14,17 +14,22 @@ function renderMedia(media) {
     }
 }
 
-// Categories to show as tabs (can be dynamic)
-const CATEGORIES = [
-    { id: '', name: 'همه' },
-    { id: 'general', name: 'عمومی' },
-    { id: 'tech', name: 'تکنولوژی' }
-];
-
-function renderCategoryTabs(selected) {
+// Dynamic category tabs
+let lastCategories = [];
+function renderCategoryTabs(selected, posts) {
     const tabs = document.getElementById('category-tabs');
     if (!tabs) return;
-    tabs.innerHTML = CATEGORIES.map(cat => `<button class="cat-tab${cat.id===selected?' active':''}" data-id="${cat.id}">${cat.name}</button>`).join(' ');
+    // Extract unique categories from posts
+    const cats = [{id:'',name:'All'}];
+    const seen = new Set();
+    posts.forEach(p => {
+        if (p.category && !seen.has(p.category)) {
+            cats.push({id:p.category,name:p.category});
+            seen.add(p.category);
+        }
+    });
+    lastCategories = cats;
+    tabs.innerHTML = cats.map(cat => `<button class="cat-tab${cat.id===selected?' active':''}" data-id="${cat.id}">${cat.name}</button>`).join(' ');
     document.querySelectorAll('.cat-tab').forEach(b => b.addEventListener('click', e => {
         const id = e.currentTarget.getAttribute('data-id');
         fetchPosts(id);
@@ -37,7 +42,8 @@ async function fetchPosts(category = '') {
     const data = await res.json();
     const container = document.getElementById('posts-container');
     container.innerHTML = '';
-    renderCategoryTabs(category);
+    // Pass posts to category tab renderer
+    renderCategoryTabs(category, data.posts || []);
 
     if (data.success && data.posts.length) {
         for (const post of data.posts) {
@@ -51,10 +57,10 @@ async function fetchPosts(category = '') {
             // Show repost/reply info
             let infoHtml = '';
             if (post.is_repost && post.original_post_id) {
-                infoHtml += `<div class="post-info">🔄 ری‌پست از <a href="#" class="show-original" data-id="${post.original_post_id}">پست #${post.original_post_id}</a></div>`;
+                infoHtml += `<div class="post-info">🔄 Repost from <a href="#" class="show-original" data-id="${post.original_post_id}" data-postid="${post.id}">Post #${post.original_post_id}</a></div>`;
             }
             if (post.parent_id) {
-                infoHtml += `<div class="post-info">↩️ ریپلای به <a href="#" class="show-parent" data-id="${post.parent_id}">پست #${post.parent_id}</a></div>`;
+                infoHtml += `<div class="post-info">↩️ Reply to <a href="#" class="show-parent" data-id="${post.parent_id}" data-postid="${post.id}">Post #${post.parent_id}</a></div>`;
             }
 
             container.innerHTML += `
@@ -64,6 +70,7 @@ async function fetchPosts(category = '') {
                         <span class="post-date">${new Date(post.created_at).toLocaleString()}</span>
                     </div>
                     ${infoHtml}
+                    <div id="parent-preview-${post.id}" class="parent-preview" style="display:none;"></div>
                     <div class="post-content">${post.content}</div>
                     ${mediaHtml}
                     ${tagsHtml}
@@ -118,22 +125,58 @@ async function fetchPosts(category = '') {
         }));
 
         // Show parent/original post preview
+        // inline preview renderers
+        async function renderInlinePreview(targetPostId, containerId) {
+            const previewRes = await fetch(`${API_BASE}/api/posts/${targetPostId}/`);
+            const previewData = await previewRes.json();
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (previewData.success && previewData.post) {
+                const p = previewData.post;
+                const media = p.media && p.media.length ? '<div class="post-media-small">' + p.media.map(renderMedia).join('') + '</div>' : '';
+                container.innerHTML = `
+                    <div class="post-preview-card">
+                        <div class="post-preview-header"><strong>${p.author}</strong> · <span class="post-date">${new Date(p.created_at).toLocaleString()}</span></div>
+                        <div class="post-preview-content">${p.content}</div>
+                        ${media}
+                        <div class="post-preview-actions">↩️ Reply to <strong>${p.author}</strong> · 🔗 <a href="/posts/?thread=${p.id}" data-id="${p.id}" class="open-thread">Open thread</a></div>
+                    </div>
+                `;
+                container.style.display = 'block';
+                // attach open-thread handler
+                const open = container.querySelector('.open-thread');
+                if (open) open.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/posts/?thread=${p.id}`; });
+            } else {
+                container.innerHTML = '<div class="post-preview-card" style="color:#999;">Post not found.</div>';
+                container.style.display = 'block';
+            }
+        }
+
         document.querySelectorAll('.show-parent').forEach(a => a.addEventListener('click', async (e) => {
             e.preventDefault();
             const id = e.currentTarget.getAttribute('data-id');
-            const preview = await fetch(`${API_BASE}/api/posts/${id}/`);
-            const data = await preview.json();
-            if (data.success && data.post) {
-                alert('پست والد:\n' + data.post.content);
+            const postId = e.currentTarget.dataset.postid;
+            const containerId = `parent-preview-${postId}`;
+            const container = document.getElementById(containerId);
+            if (container && container.style.display === 'block') {
+                container.style.display = 'none';
+                container.innerHTML = '';
+            } else {
+                await renderInlinePreview(id, containerId);
             }
         }));
+
         document.querySelectorAll('.show-original').forEach(a => a.addEventListener('click', async (e) => {
             e.preventDefault();
             const id = e.currentTarget.getAttribute('data-id');
-            const preview = await fetch(`${API_BASE}/api/posts/${id}/`);
-            const data = await preview.json();
-            if (data.success && data.post) {
-                alert('پست اصلی:\n' + data.post.content);
+            const postId = e.currentTarget.dataset.postid;
+            const containerId = `parent-preview-${postId}`;
+            const container = document.getElementById(containerId);
+            if (container && container.style.display === 'block') {
+                container.style.display = 'none';
+                container.innerHTML = '';
+            } else {
+                await renderInlinePreview(id, containerId);
             }
         }));
 
@@ -159,7 +202,7 @@ async function toggleCommentBox(postId) {
                 </div>
             `).join('') + '</div>';
         } else {
-            repliesHtml = '<div class="replies-list" style="color:#999;">هیچ ریپلایی وجود ندارد.</div>';
+            repliesHtml = '<div class="replies-list" style="color:#999;">No replies yet.</div>';
         }
         box.innerHTML = `
             <div class="comment-box">

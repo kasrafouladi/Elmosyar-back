@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="explore-room-page">
+    <h2>Explore Room</h2>
+    <form id="room-search-form">
+        <input type="text" id="room-name" placeholder="Enter room name" required>
+        <button type="submit">Search</button>
+    </form>
+    <div id="room-posts-list"></div>
+</div>
+{% endblock %}
