@@ -1,0 +1,37 @@
+<div class="page post-detail active">
+    <div class="card">
+        <a href="#home" onclick="showPage('home')" style="display: inline-block; margin-bottom: 20px; color: #1da1f2; text-decoration: none;">
+            ← بازگشت
+        </a>
+    </div>
+    
+    <div id="post-detail-content">
+        <!-- Main post will be loaded here -->
+    </div>
+    
+    <div class="card">
+        <h3>💬 کامنت‌ها</h3>
+        
+        <form id="comment-form" style="margin: 20px 0;">
+            <div class="form-group">
+                <textarea id="comment-content" class="form-input form-textarea" 
+                          placeholder="کامنت خود را بنویسید..." required 
+                          style="min-height: 80px;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">
+                ارسال کامنت
+            </button>
+        </form>
+        
+        <div id="comments-container" style="max-height: 500px; overflow-y: auto;">
+            <!-- Comments will be loaded here -->
+        </div>
+    </div>
+    
+    <div class="card">
+        <h3>↩️ پاسخ‌ها</h3>
+        <div id="replies-container" style="max-height: 500px; overflow-y: auto;">
+            <!-- Replies will be loaded here -->
+        </div>
+    </div>
+</div>

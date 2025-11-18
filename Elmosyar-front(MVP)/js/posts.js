@@ -16,7 +16,10 @@ async function loadPosts(containerId, endpoint) {
         }
     } catch (error) {
         console.error('Error loading posts:', error);
-        document.getElementById(containerId).innerHTML = '<div class="message error">خطا در بارگذاری پست‌ها</div>';
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.innerHTML = '<div class="message error">خطا در بارگذاری پست‌ها</div>';
+        }
     } finally {
         hideLoading();
     }
@@ -27,6 +30,8 @@ function renderPost(post) {
         ? post.media.map(media => {
             if (media.type === 'image') {
                 return `<div class="post-media"><img src="${media.url}" alt="Post image"></div>`;
+            } else if (media.type === 'video') {
+                return `<div class="post-media"><video src="${media.url}" controls style="max-width: 100%; border-radius: 8px;"></video></div>`;
             }
             return '';
         }).join('') 
@@ -37,20 +42,24 @@ function renderPost(post) {
         : '';
 
     const roomHtml = post.category 
-        ? `<a href="#explore?room=${encodeURIComponent(post.category)}" onclick="showRoom('${post.category}')" class="room-badge">🏠 ${post.category}</a>` 
+        ? `<a href="#explore?room=${encodeURIComponent(post.category)}" onclick="event.preventDefault(); showRoom('${escapeHtml(post.category).replace(/'/g, "\\'")}'); return false;" class="room-badge">🏠 ${escapeHtml(post.category)}</a>` 
         : '';
 
+    // Handle author info
+    const authorUsername = post.author_info ? post.author_info.username : post.author;
+    const authorProfilePic = post.author_info ? post.author_info.profile_picture : null;
+
     return `
-        <div class="post" data-post-id="${post.id}">
+        <div class="post" data-post-id="${post.id}" onclick="showPostDetail(${post.id})" style="cursor: pointer;">
             <div class="post-header">
                 <div class="post-avatar">
-                    ${post.author.profile_picture 
-                        ? `<img src="${post.author.profile_picture}" alt="${post.author.username}" class="post-avatar">`
+                    ${authorProfilePic 
+                        ? `<img src="${authorProfilePic}" alt="${escapeHtml(authorUsername)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
                         : '👤'
                     }
                 </div>
                 <div class="post-user">
-                    <a href="#profile?user=${post.author.username}" onclick="showUserProfile('${post.author.username}')" class="post-username">${post.author.username}</a>
+                    <a href="#profile?user=${encodeURIComponent(authorUsername)}" onclick="event.stopPropagation(); showUserProfile('${escapeHtml(authorUsername).replace(/'/g, "\\'")}'); return false;" class="post-username">@${escapeHtml(authorUsername)}</a>
                     <div class="post-date">${formatDate(post.created_at)}</div>
                 </div>
             </div>
@@ -59,14 +68,17 @@ function renderPost(post) {
             ${tagsHtml}
             ${roomHtml}
             <div class="post-actions">
-                <button class="action-btn ${post.likes_count > 0 ? 'liked' : ''}" onclick="likePost(${post.id})">
+                <button class="action-btn ${post.likes_count > 0 ? 'liked' : ''}" onclick="event.stopPropagation(); likePost(${post.id}); return false;">
                     👍 ${post.likes_count}
                 </button>
-                <button class="action-btn" onclick="showPostDetail(${post.id})">
+                <button class="action-btn" onclick="event.stopPropagation(); showPostDetail(${post.id}); return false;">
                     💬 ${post.comments_count}
                 </button>
-                <button class="action-btn" onclick="repost(${post.id})">
+                <button class="action-btn">
                     🔄 ${post.reposts_count}
+                </button>
+                <button class="action-btn">
+                    ↩️ ${post.replies_count || 0}
                 </button>
             </div>
         </div>
@@ -86,7 +98,8 @@ async function createPost(formData) {
         
         if (data.success) {
             showMessage('پست با موفقیت ایجاد شد!');
-            document.getElementById('post-form').reset();
+            const form = document.getElementById('post-form');
+            if (form) form.reset();
             return true;
         } else {
             showMessage(data.message, 'error');
@@ -114,11 +127,13 @@ async function likePost(postId) {
             const postElement = document.querySelector(`[data-post-id="${postId}"]`);
             if (postElement) {
                 const likeBtn = postElement.querySelector('.action-btn');
-                likeBtn.innerHTML = `👍 ${data.likes_count}`;
-                if (data.likes_count > 0) {
-                    likeBtn.classList.add('liked');
-                } else {
-                    likeBtn.classList.remove('liked');
+                if (likeBtn) {
+                    likeBtn.innerHTML = `👍 ${data.likes_count}`;
+                    if (data.likes_count > 0) {
+                        likeBtn.classList.add('liked');
+                    } else {
+                        likeBtn.classList.remove('liked');
+                    }
                 }
             }
         }
@@ -136,55 +151,118 @@ async function showPostDetail(postId) {
         const data = await response.json();
         
         if (data.success) {
+            // Store current post ID for comments
+            window.currentPostId = postId;
+            
             // Load post detail page
-            showPage('post-detail');
-            document.getElementById('post-detail-content').innerHTML = renderPost(data.post);
-            loadComments(postId);
+            await loadPageContent('post-detail');
+            
+            // Render main post
+            const postContent = document.getElementById('post-detail-content');
+            if (postContent) {
+                postContent.innerHTML = renderPost(data.post);
+            }
+            
+            // Load comments
+            await loadComments(postId, data.post.comments || []);
+            
+            // Load replies
+            await loadReplies(postId, data.post.replies || []);
+            
+            // Setup comment form
+            const commentForm = document.getElementById('comment-form');
+            if (commentForm) {
+                commentForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    await submitComment(postId);
+                };
+            }
+        } else {
+            showMessage('خطا در بارگذاری پست', 'error');
         }
     } catch (error) {
+        console.error('Error loading post detail:', error);
         showMessage('خطا در بارگذاری پست', 'error');
     } finally {
         hideLoading();
     }
 }
 
-async function loadComments(postId) {
-    try {
-        const response = await fetch(`${API_BASE}/api/posts/${postId}/comments/`, {
-            credentials: 'include'
-        });
-        const data = await response.json();
-        
-        const container = document.getElementById('comments-container');
-        
-        if (data.success && data.comments.length > 0) {
-            container.innerHTML = data.comments.map(comment => renderComment(comment)).join('');
-        } else {
-            container.innerHTML = '<p style="text-align: center; color: #657786;">هنوز نظری وجود ندارد</p>';
-        }
-    } catch (error) {
-        console.error('Error loading comments:', error);
+async function loadComments(postId, comments) {
+    const container = document.getElementById('comments-container');
+    if (!container) return;
+    
+    if (comments && comments.length > 0) {
+        container.innerHTML = comments.map(comment => renderComment(comment)).join('');
+    } else {
+        container.innerHTML = '<p style="text-align: center; color: #657786; padding: 20px;">هنوز نظری وجود ندارد</p>';
+    }
+}
+
+async function loadReplies(postId, replies) {
+    const container = document.getElementById('replies-container');
+    if (!container) return;
+    
+    if (replies && replies.length > 0) {
+        container.innerHTML = replies.map(reply => renderPost(reply)).join('');
+    } else {
+        container.innerHTML = '<p style="text-align: center; color: #657786; padding: 20px;">هنوز پاسخی وجود ندارد</p>';
     }
 }
 
 function renderComment(comment) {
     return `
-        <div class="post">
+        <div class="post" style="margin-bottom: 15px;">
             <div class="post-header">
-                <div class="post-avatar">
-                    ${comment.user.profile_picture 
-                        ? `<img src="${comment.user.profile_picture}" alt="${comment.user.username}" class="post-avatar">`
-                        : '👤'
-                    }
+                <div class="post-avatar" style="width: 40px; height: 40px; font-size: 16px;">
+                    👤
                 </div>
                 <div class="post-user">
-                    <a href="#profile?user=${comment.user.username}" onclick="showUserProfile('${comment.user.username}')" class="post-username">${comment.user.username}</a>
+                    <a href="#profile?user=${encodeURIComponent(comment.user)}" onclick="showUserProfile('${escapeHtml(comment.user).replace(/'/g, "\\'")}'); return false;" class="post-username">@${escapeHtml(comment.user)}</a>
                     <div class="post-date">${formatDate(comment.created_at)}</div>
                 </div>
             </div>
             <div class="post-content">${escapeHtml(comment.content)}</div>
         </div>
     `;
+}
+
+async function submitComment(postId) {
+    const contentInput = document.getElementById('comment-content');
+    if (!contentInput) return;
+    
+    const content = contentInput.value.trim();
+    if (!content) {
+        showMessage('لطفا متن کامنت را وارد کنید', 'error');
+        return;
+    }
+    
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/api/posts/${postId}/comment/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({ content })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('کامنت با موفقیت ثبت شد');
+            contentInput.value = '';
+            // Reload post detail to show new comment
+            showPostDetail(postId);
+        } else {
+            showMessage(data.message, 'error');
+        }
+    } catch (error) {
+        showMessage('خطا در ثبت کامنت', 'error');
+    } finally {
+        hideLoading();
+    }
 }
 
 // Export for use in other files

@@ -5,7 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load initial page based on URL hash
     const hash = window.location.hash || '#home';
-    showPage(hash.substring(1));
+    const pageName = hash.substring(1).split('?')[0];
+    showPage(pageName);
     
     // Handle browser back/forward
     window.addEventListener('hashchange', function() {
@@ -15,6 +16,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function showPage(pageName) {
+    // Default to home if empty
+    if (!pageName || pageName === '') {
+        pageName = 'home';
+    }
+    
     // Hide all pages
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
@@ -26,23 +32,31 @@ function showPage(pageName) {
     // Load the requested page
     setTimeout(() => {
         loadPageContent(pageName);
-    }, 300);
+    }, 100);
 }
 
 async function loadPageContent(pageName) {
     try {
         const response = await fetch(`pages/${pageName}.html`);
-        const html = await response.text();
         
+        if (!response.ok) {
+            throw new Error('Page not found');
+        }
+        
+        const html = await response.text();
         document.getElementById('main-content').innerHTML = html;
         
         // Initialize page-specific functionality
-        initializePage(pageName);
+        await initializePage(pageName);
         
         // Update URL hash without triggering hashchange
-        const currentHash = window.location.hash.substring(1);
+        const currentHash = window.location.hash.substring(1).split('?')[0];
         if (currentHash !== pageName) {
-            window.location.hash = pageName;
+            // Preserve query parameters if any
+            const queryString = window.location.hash.includes('?') 
+                ? '?' + window.location.hash.split('?')[1] 
+                : '';
+            window.history.pushState(null, '', `#${pageName}${queryString}`);
         }
         
     } catch (error) {
@@ -59,42 +73,68 @@ async function loadPageContent(pageName) {
     }
 }
 
-function initializePage(pageName) {
+async function initializePage(pageName) {
+    // First handle URL parameters
+    handleUrlParameters(pageName);
+    
+    // Then setup event listeners
     switch (pageName) {
         case 'home':
             if (currentUser) {
-                loadPosts('home-posts', '/api/posts/');
+                await loadPosts('home-posts', '/api/posts/');
+            } else {
+                const homePostsContainer = document.getElementById('home-posts');
+                if (homePostsContainer) {
+                    homePostsContainer.innerHTML = `
+                        <div class="card">
+                            <p style="text-align: center; color: #657786;">
+                                لطفا برای مشاهده پست‌ها 
+                                <a href="#login" onclick="showPage('login')">وارد شوید</a>
+                            </p>
+                        </div>
+                    `;
+                }
             }
             break;
             
         case 'login':
-            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLogin);
+            }
             break;
             
         case 'signup':
-            document.getElementById('signup-form').addEventListener('submit', handleSignup);
+            const signupForm = document.getElementById('signup-form');
+            if (signupForm) {
+                signupForm.addEventListener('submit', handleSignup);
+            }
             break;
             
         case 'forgot-password':
-            document.getElementById('forgot-password-form').addEventListener('submit', handleForgotPassword);
+            const forgotForm = document.getElementById('forgot-password-form');
+            if (forgotForm) {
+                forgotForm.addEventListener('submit', handleForgotPassword);
+            }
             break;
             
         case 'reset-password':
-            document.getElementById('reset-password-form').addEventListener('submit', handleResetPassword);
+            const resetForm = document.getElementById('reset-password-form');
+            if (resetForm) {
+                resetForm.addEventListener('submit', handleResetPassword);
+            }
             break;
             
         case 'profile':
-            if (currentUser) {
-                loadUserProfile(currentUser.username);
-            } else {
-                showMessage('لطفا ابتدا وارد شوید', 'error');
-                showPage('login');
-            }
+            // URL parameters are handled in handleUrlParameters
             break;
             
         case 'create-post':
             if (currentUser) {
-                document.getElementById('post-form').addEventListener('submit', handleCreatePost);
+                const postForm = document.getElementById('post-form');
+                if (postForm) {
+                    postForm.addEventListener('submit', handleCreatePost);
+                }
             } else {
                 showMessage('لطفا ابتدا وارد شوید', 'error');
                 showPage('login');
@@ -102,20 +142,24 @@ function initializePage(pageName) {
             break;
             
         case 'explore':
-            document.getElementById('room-search-form').addEventListener('submit', handleRoomSearch);
+            const roomSearchForm = document.getElementById('room-search-form');
+            if (roomSearchForm) {
+                roomSearchForm.addEventListener('submit', handleRoomSearch);
+            }
             break;
             
         case 'search':
-            document.getElementById('user-search-form').addEventListener('submit', handleUserSearch);
+            const userSearchForm = document.getElementById('user-search-form');
+            if (userSearchForm) {
+                userSearchForm.addEventListener('submit', handleUserSearch);
+            }
             break;
             
         case 'post-detail':
-            // Already handled in showPostDetail function
+        case 'user-posts':
+            // Already handled by their respective functions
             break;
     }
-    
-    // Handle URL parameters
-    handleUrlParameters(pageName);
 }
 
 function handleUrlParameters(pageName) {
@@ -125,23 +169,28 @@ function handleUrlParameters(pageName) {
         case 'profile':
             const user = urlParams.get('user');
             if (user) {
-                loadUserProfile(user);
+                loadUserProfile(decodeURIComponent(user));
+            } else if (currentUser) {
+                loadUserProfile(currentUser.username);
+            } else {
+                showMessage('لطفا ابتدا وارد شوید', 'error');
+                showPage('login');
             }
             break;
             
         case 'explore':
             const room = urlParams.get('room');
             if (room) {
-                showRoom(room);
+                showRoom(decodeURIComponent(room));
             }
             break;
             
         case 'reset-password':
             const token = urlParams.get('token');
-            if (token) {
-                // ذخیره توکن برای استفاده در فرم
-                document.getElementById('reset-password-form').dataset.token = token;
-            } else {
+            const resetForm = document.getElementById('reset-password-form');
+            if (token && resetForm) {
+                resetForm.dataset.token = token;
+            } else if (!token) {
                 showMessage('لینک بازیابی معتبر نیست', 'error');
                 showPage('login');
             }
@@ -154,7 +203,7 @@ async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
-    const remember = document.getElementById('login-remember').checked;
+    const remember = document.getElementById('login-remember') ? document.getElementById('login-remember').checked : false;
     
     await login(email, password, remember);
 }
@@ -165,6 +214,11 @@ async function handleSignup(e) {
     const email = document.getElementById('signup-email').value;
     const password = document.getElementById('signup-password').value;
     const passwordConfirm = document.getElementById('signup-confirm-password').value;
+    
+    if (password !== passwordConfirm) {
+        showMessage('رمز عبور و تکرار آن مطابقت ندارند', 'error');
+        return;
+    }
     
     await signup(username, email, password, passwordConfirm);
 }
@@ -215,7 +269,7 @@ async function handleCreatePost(e) {
     const mentions = document.getElementById('post-mentions').value;
     const mediaInput = document.getElementById('post-media');
     
-    if (!content.trim() && mediaInput.files.length === 0) {
+    if (!content.trim() && (!mediaInput.files || mediaInput.files.length === 0)) {
         showMessage('لطفا محتوا یا فایل رسانه‌ای وارد کنید', 'error');
         return;
     }
@@ -231,8 +285,10 @@ async function handleCreatePost(e) {
     formData.append('tags', tags);
     formData.append('mentions', mentions);
     
-    for (let file of mediaInput.files) {
-        formData.append('media', file);
+    if (mediaInput.files) {
+        for (let file of mediaInput.files) {
+            formData.append('media', file);
+        }
     }
     
     const success = await createPost(formData);
@@ -246,6 +302,8 @@ function handleRoomSearch(e) {
     const roomName = document.getElementById('room-name').value.trim();
     if (roomName) {
         showRoom(roomName);
+    } else {
+        showMessage('لطفا نام اتاق را وارد کنید', 'error');
     }
 }
 
@@ -254,14 +312,18 @@ function handleUserSearch(e) {
     const username = document.getElementById('search-username').value.trim();
     if (username) {
         searchUsers(username);
+    } else {
+        showMessage('لطفا نام کاربری را وارد کنید', 'error');
     }
 }
 
 // Global functions for HTML onclick
 window.showPage = showPage;
+window.loadPageContent = loadPageContent;
 window.showUserProfile = loadUserProfile;
 window.showUserPosts = showUserPosts;
 window.showRoom = showRoom;
 window.logout = logout;
 window.likePost = likePost;
 window.showPostDetail = showPostDetail;
+window.searchUsers = searchUsers;

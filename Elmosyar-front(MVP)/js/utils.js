@@ -1,12 +1,129 @@
-const API_BASE = 'http://localhost:8000'; // تغییر به آدرس واقعی backend
+// ════════════════════════════════════════════════════════════
+// 🔧 تنظیمات اصلی - فقط اینجا URL Backend را تغییر دهید
+// ════════════════════════════════════════════════════════════
 
-// Utility functions
+const CONFIG = {
+    // 👇 فقط این خط را تغییر دهید
+    API_BASE: 'http://localhost:8000',
+    
+    // تنظیمات اضافی (در صورت نیاز)
+    TIMEOUT: 30000, // 30 ثانیه
+    ENABLE_CREDENTIALS: true
+};
+
+// ════════════════════════════════════════════════════════════
+// 📡 کلاس مدیریت درخواست‌های API
+// ════════════════════════════════════════════════════════════
+
+class APIClient {
+    constructor(baseURL) {
+        this.baseURL = baseURL;
+    }
+
+    // متد کمکی برای ساخت URL کامل
+    buildURL(endpoint) {
+        // حذف اسلش اضافی
+        const cleanBase = this.baseURL.replace(/\/$/, '');
+        const cleanEndpoint = endpoint.replace(/^\//, '');
+        return `${cleanBase}/${cleanEndpoint}`;
+    }
+
+    // متد عمومی برای درخواست‌های GET
+    async get(endpoint, options = {}) {
+        return this.request(endpoint, {
+            method: 'GET',
+            ...options
+        });
+    }
+
+    // متد عمومی برای درخواست‌های POST
+    async post(endpoint, data = null, options = {}) {
+        const isFormData = data instanceof FormData;
+        
+        return this.request(endpoint, {
+            method: 'POST',
+            headers: isFormData ? {} : {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            body: isFormData ? data : (data ? JSON.stringify(data) : null),
+            ...options
+        });
+    }
+
+    // متد عمومی برای درخواست‌های PUT
+    async put(endpoint, data = null, options = {}) {
+        return this.request(endpoint, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            body: data ? JSON.stringify(data) : null,
+            ...options
+        });
+    }
+
+    // متد عمومی برای درخواست‌های DELETE
+    async delete(endpoint, options = {}) {
+        return this.request(endpoint, {
+            method: 'DELETE',
+            ...options
+        });
+    }
+
+    // متد اصلی برای ارسال درخواست
+    async request(endpoint, options = {}) {
+        const url = this.buildURL(endpoint);
+        
+        const defaultOptions = {
+            credentials: CONFIG.ENABLE_CREDENTIALS ? 'include' : 'same-origin',
+            ...options
+        };
+
+        try {
+            const response = await fetch(url, defaultOptions);
+            
+            // بررسی Content-Type برای تشخیص JSON
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                return { response, data };
+            }
+            
+            // برای فایل‌ها یا محتوای غیر JSON
+            const text = await response.text();
+            return { response, data: text };
+            
+        } catch (error) {
+            console.error('API Request Error:', error);
+            throw error;
+        }
+    }
+}
+
+// ساخت نمونه از API Client
+const api = new APIClient(CONFIG.API_BASE);
+
+// برای سازگاری با کد قبلی
+const API_BASE = CONFIG.API_BASE;
+
+// ════════════════════════════════════════════════════════════
+// 🛠️ توابع کمکی
+// ════════════════════════════════════════════════════════════
+
 function showLoading() {
-    document.getElementById('loading').style.display = 'flex';
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) {
+        loadingEl.style.display = 'flex';
+    }
 }
 
 function hideLoading() {
-    document.getElementById('loading').style.display = 'none';
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) {
+        loadingEl.style.display = 'none';
+    }
 }
 
 function showMessage(message, type = 'success') {
@@ -15,11 +132,13 @@ function showMessage(message, type = 'success') {
     messageDiv.textContent = message;
     
     const mainContent = document.getElementById('main-content');
-    mainContent.insertBefore(messageDiv, mainContent.firstChild);
-    
-    setTimeout(() => {
-        messageDiv.remove();
-    }, 5000);
+    if (mainContent) {
+        mainContent.insertBefore(messageDiv, mainContent.firstChild);
+        
+        setTimeout(() => {
+            messageDiv.remove();
+        }, 5000);
+    }
 }
 
 function formatDate(dateString) {
@@ -40,10 +159,29 @@ function formatDate(dateString) {
 }
 
 function escapeHtml(unsafe) {
+    if (!unsafe) return '';
     return unsafe
+        .toString()
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+}
+
+// ════════════════════════════════════════════════════════════
+// 📤 Export برای استفاده در فایل‌های دیگر
+// ════════════════════════════════════════════════════════════
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { 
+        CONFIG,
+        api,
+        API_BASE,
+        showLoading,
+        hideLoading,
+        showMessage,
+        formatDate,
+        escapeHtml
+    };
 }

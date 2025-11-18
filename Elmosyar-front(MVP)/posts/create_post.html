@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Post</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { margin-bottom: 20px; color: #333; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #2196F3; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        textarea, input { padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: Arial, sans-serif; }
+        textarea { min-height: 150px; resize: vertical; }
+        button { padding: 12px 24px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; }
+        button:hover { background-color: #45a049; }
+        .message { margin-top: 15px; padding: 12px; border-radius: 4px; }
+        .error { background-color: #ffebee; color: #c62828; }
+        .success { background-color: #e8f5e9; color: #2e7d32; }
+        label { font-weight: bold; color: #555; margin-bottom: 5px; }
+        .required { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← بازگشت به خانه</a>
+        <h1>ایجاد پست جدید</h1>
+        
+        <form id="post-form" enctype="multipart/form-data">
+            <div>
+                <label>محتوای پست:</label>
+                <textarea id="post-content" placeholder="چه چیزی در ذهن دارید؟" required></textarea>
+            </div>
+            
+            <div>
+                <label>اتاق/دسته‌بندی: <span class="required">*</span></label>
+                <input type="text" id="post-category" placeholder="نام اتاق (الزامی)" required>
+            </div>
+            
+            <div>
+                <label>فایل‌های رسانه‌ای:</label>
+                <input type="file" id="post-media" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.zip,.rar">
+            </div>
+            
+            <div>
+                <label>برچسب‌ها:</label>
+                <input type="text" id="post-tags" placeholder="برچسب‌ها (با کاما جدا شوند)">
+            </div>
+            
+            <div>
+                <label>منشن کاربران:</label>
+                <input type="text" id="post-mentions" placeholder="نام کاربری‌ها (با کاما جدا شوند)">
+            </div>
+            
+            <button type="submit">انتشار پست</button>
+        </form>
+        
+        <div id="post-message"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        document.getElementById('post-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const content = document.getElementById('post-content').value.trim();
+            const category = document.getElementById('post-category').value.trim();
+            const tags = document.getElementById('post-tags').value.trim();
+            const mentions = document.getElementById('post-mentions').value.trim();
+            const mediaInput = document.getElementById('post-media');
+            
+            if (!category) {
+                const msg = document.getElementById('post-message');
+                msg.className = 'message error';
+                msg.textContent = 'نام اتاق الزامی است!';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('content', content);
+            formData.append('category', category);
+            formData.append('tags', tags);
+            formData.append('mentions', mentions);
+            
+            for (let file of mediaInput.files) {
+                formData.append('media', file);
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/posts/`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                const data = await res.json();
+                const msg = document.getElementById('post-message');
+                
+                if (data.success) {
+                    msg.className = 'message success';
+                    msg.textContent = '✓ پست با موفقیت ایجاد شد!';
+                    document.getElementById('post-form').reset();
+                    
+                    // Redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    msg.className = 'message error';
+                    msg.textContent = '✗ ' + (data.message || 'خطا در ایجاد پست');
+                }
+            } catch (error) {
+                const msg = document.getElementById('post-message');
+                msg.className = 'message error';
+                msg.textContent = '✗ خطا: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>

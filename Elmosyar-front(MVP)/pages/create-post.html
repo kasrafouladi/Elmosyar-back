@@ -1,0 +1,41 @@
+<div class="page create-post active">
+    <div class="card">
+        <h2>📝 ایجاد پست جدید</h2>
+        
+        <form id="post-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="form-label">محتوای پست:</label>
+                <textarea id="post-content" class="form-input form-textarea" 
+                          placeholder="چه چیزی در ذهن دارید؟" required></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">اتاق/دسته‌بندی: <span style="color: red;">*</span></label>
+                <input type="text" id="post-category" class="form-input" 
+                       placeholder="نام اتاق (الزامی)" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">فایل‌های رسانه‌ای:</label>
+                <input type="file" id="post-media" class="form-input" multiple 
+                       accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.zip,.rar">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">برچسب‌ها:</label>
+                <input type="text" id="post-tags" class="form-input" 
+                       placeholder="برچسب‌ها (با کاما جدا شوند)">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">منشن کاربران:</label>
+                <input type="text" id="post-mentions" class="form-input" 
+                       placeholder="نام کاربری‌ها (با کاما جدا شوند)">
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%;">
+                انتشار پست
+            </button>
+        </form>
+    </div>
+</div>

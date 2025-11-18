@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پست‌های {{ profile_user.username }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background-color: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .header { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #2196F3; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        h1 { color: #333; margin-bottom: 10px; }
+        .user-info { color: #666; font-size: 14px; }
+        
+        .post { background: white; margin: 15px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; }
+        .post:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .post-date { color: #999; font-size: 12px; }
+        .post-content { line-height: 1.6; margin-bottom: 10px; color: #333; }
+        .post-room { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+        .room-badge { background: #E3F2FD; color: #1976D2; padding: 6px 14px; border-radius: 15px; font-size: 13px; }
+        .room-link { padding: 6px 14px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; font-size: 13px; }
+        .room-link:hover { background: #0b7dda; }
+        .post-tags { color: #2196F3; font-size: 12px; margin: 5px 0; }
+        .post-actions { display: flex; gap: 15px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        .post-actions button { padding: 6px 12px; background: transparent; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 13px; color: #555; }
+        .post-actions button:hover { background: #f5f5f5; }
+        .media-container { margin: 10px 0; }
+        .media-container img, .media-container video { max-width: 100%; border-radius: 4px; margin: 5px 0; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/profiles/{{ profile_user.username }}/" class="back-link">← بازگشت به پروفایل</a>
+            <h1>پست‌های @{{ profile_user.username }}</h1>
+            <div class="user-info">
+                {% if profile_user.first_name or profile_user.last_name %}
+                    {{ profile_user.first_name }} {{ profile_user.last_name }}
+                {% endif %}
+            </div>
+        </div>
+        
+        <div id="posts-container"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const username = "{{ profile_user.username }}";
+
+        async function fetchPosts() {
+            try {
+                const res = await fetch(`${API_BASE}/api/users/${username}/posts/`, {credentials: 'include'});
+                const data = await res.json();
+                
+                const container = document.getElementById('posts-container');
+                container.innerHTML = '';
+                
+                if (data.success && data.posts.length) {
+                    data.posts.forEach(post => {
+                        const postEl = createPostElement(post);
+                        container.appendChild(postEl);
+                    });
+                } else {
+                    container.innerHTML = '<div class="empty-state">این کاربر هنوز پستی منتشر نکرده است.</div>';
+                }
+            } catch (error) {
+                console.error('Error fetching posts:', error);
+            }
+        }
+
+        function createPostElement(post) {
+            const div = document.createElement('div');
+            div.className = 'post';
+            div.onclick = () => window.location.href = `/posts/${post.id}/`;
+            
+            let mediaHtml = '';
+            if (post.media && post.media.length) {
+                mediaHtml = '<div class="media-container">';
+                post.media.forEach(m => {
+                    if (m.type === 'image') {
+                        mediaHtml += `<img src="${m.url}" alt="media">`;
+                    } else if (m.type === 'video') {
+                        mediaHtml += `<video src="${m.url}" controls></video>`;
+                    }
+                });
+                mediaHtml += '</div>';
+            }
+            
+            // Room badge با دکمه لینک - فقط در این صفحه
+            const roomHtml = post.category ? `
+                <div class="post-room">
+                    <span class="room-badge">📁 ${post.category}</span>
+                    <a href="/explore/?room=${encodeURIComponent(post.category)}" class="room-link" onclick="event.stopPropagation();">مشاهده اتاق</a>
+                </div>
+            ` : '';
+            
+            const tagsHtml = post.tags.length ? `<div class="post-tags">🏷️ ${post.tags.join(', ')}</div>` : '';
+            
+            div.innerHTML = `
+                <div class="post-header">
+                    <span style="font-weight:bold;color:#333;">@${post.author}</span>
+                    <span class="post-date">${new Date(post.created_at).toLocaleString('fa-IR')}</span>
+                </div>
+                <div class="post-content">${post.content}</div>
+                ${mediaHtml}
+                ${roomHtml}
+                ${tagsHtml}
+                <div class="post-actions">
+                    <button onclick="event.stopPropagation(); likePost(${post.id})">👍 ${post.likes_count}</button>
+                    <button onclick="event.stopPropagation();">💬 ${post.comments_count}</button>
+                    <button onclick="event.stopPropagation();">🔁 ${post.reposts_count}</button>
+                    <button onclick="event.stopPropagation();">↩️ ${post.replies_count}</button>
+                </div>
+            `;
+            
+            return div;
+        }
+
+        async function likePost(postId) {
+            try {
+                await fetch(`${API_BASE}/api/posts/${postId}/like/`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                fetchPosts();
+            } catch (error) {
+                console.error('Error liking post:', error);
+            }
+        }
+
+        fetchPosts();
+    </script>
+</body>
+</html>

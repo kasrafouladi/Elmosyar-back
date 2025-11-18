@@ -27,20 +27,11 @@ function updateNavbar() {
 async function login(email, password, remember = false) {
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/api/login/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-                username_or_email: email,
-                password: password,
-                remember: remember
-            })
+        const { data } = await api.post('/api/login/', {
+            username_or_email: email,
+            password: password,
+            remember: remember
         });
-        
-        const data = await response.json();
         
         if (data.success) {
             currentUser = data.user;
@@ -64,20 +55,12 @@ async function login(email, password, remember = false) {
 async function signup(username, email, password, passwordConfirm) {
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/api/signup/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                username: username,
-                email: email,
-                password: password,
-                password_confirm: passwordConfirm
-            })
+        const { data } = await api.post('/api/signup/', {
+            username: username,
+            email: email,
+            password: password,
+            password_confirm: passwordConfirm
         });
-        
-        const data = await response.json();
         
         if (data.success) {
             showMessage('ثبت‌نام موفقیت‌آمیز بود. لطفا ایمیل خود را بررسی کنید.');
@@ -95,21 +78,12 @@ async function signup(username, email, password, passwordConfirm) {
     }
 }
 
-// اضافه کردن توابع بازیابی رمز عبور
 async function requestPasswordReset(email) {
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/api/password-reset/request/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email
-            })
+        const { data } = await api.post('/api/password-reset/request/', {
+            email: email
         });
-        
-        const data = await response.json();
         
         if (data.success) {
             showMessage('ایمیل بازیابی رمز عبور ارسال شد. لطفا صندوق ایمیل خود را بررسی کنید.');
@@ -130,18 +104,10 @@ async function requestPasswordReset(email) {
 async function resetPassword(token, password, passwordConfirm) {
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/api/password-reset/${token}/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                password: password,
-                password_confirm: passwordConfirm
-            })
+        const { data } = await api.post(`/api/password-reset/${token}/`, {
+            password: password,
+            password_confirm: passwordConfirm
         });
-        
-        const data = await response.json();
         
         if (data.success) {
             showMessage('رمز عبور با موفقیت تغییر کرد. اکنون می‌توانید وارد شوید.');
@@ -162,10 +128,7 @@ async function resetPassword(token, password, passwordConfirm) {
 async function logout() {
     showLoading();
     try {
-        await fetch(`${API_BASE}/api/logout/`, {
-            method: 'POST',
-            credentials: 'include'
-        });
+        await api.post('/api/logout/');
         
         currentUser = null;
         localStorage.removeItem('currentUser');

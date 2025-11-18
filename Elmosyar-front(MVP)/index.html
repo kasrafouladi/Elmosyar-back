@@ -1,70 +1,516 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Platform</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Auth System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        
+        nav {
+            background-color: #333;
+            overflow: hidden;
+            padding: 10px;
+        }
+        
+        nav button, nav a {
+            float: left;
+            display: block;
+            color: white;
+            text-align: center;
+            padding: 14px 20px;
+            text-decoration: none;
+            font-size: 17px;
+            border: none;
+            background-color: #333;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        nav button:hover, nav a:hover {
+            background-color: #ddd;
+            color: black;
+        }
+        
+        #app {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .view {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        h1, h2, h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        input, textarea {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            font-family: Arial, sans-serif;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .secondary-button {
+            background-color: #2196F3;
+        }
+        
+        .secondary-button:hover {
+            background-color: #0b7dda;
+        }
+        
+        .message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+    </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="#home" onclick="showPage('home')">📱 SocialApp</a>
-            </div>
-            <div class="nav-links">
-                <a href="#home" onclick="showPage('home')" class="nav-link">🏠 خانه</a>
-                <a href="#explore" onclick="showPage('explore')" class="nav-link">🔍 اکسپلور</a>
-                <a href="#search" onclick="showPage('search')" class="nav-link">👥 جستجو</a>
-                <a href="#create-post" onclick="showPage('create-post')" class="nav-link">📝 پست جدید</a>
-                <span id="auth-buttons">
-                    <a href="#login" onclick="showPage('login')" class="nav-link">🔐 ورود</a>
-                    <a href="#signup" onclick="showPage('signup')" class="nav-link">📝 ثبت‌نام</a>
-                </span>
-                <span id="user-menu" style="display: none;">
-                    <a href="#profile" onclick="showPage('profile')" class="nav-link">👤 پروفایل</a>
-                    <button onclick="logout()" class="nav-link logout-btn">🚪 خروج</button>
-                </span>
-            </div>
+    <div id="app">
+        <nav>
+            <button onclick="showView('home')">Home</button>
+            <button onclick="showView('signup')" id="signup-btn">Sign Up</button>
+            <button onclick="showView('login')" id="login-btn">Login</button>
+            <button onclick="showView('profile')" id="profile-btn" style="display:none;">Profile</button>
+            <a href="/posts/" id="posts-link" style="display:none;">Posts</a>
+            <a href="/posts/create/" id="create-post-link" style="display:none;">+ Create Post</a>
+            <a href="/explore/" id="explore-link" style="display:none;">Explore</a>
+            <button onclick="logoutUser()" id="logout-btn" style="display:none;">Logout</button>
+        </nav>
+
+        <!-- Home View -->
+        <div id="home-view" class="view">
+            <h1>Welcome to Auth System</h1>
+            <p>Use the navigation buttons above to navigate.</p>
         </div>
-    </nav>
 
-    <!-- Main Content -->
-    <main id="main-content">
-        <!-- Pages will be loaded here dynamically -->
-    </main>
+        <!-- Sign Up View -->
+        <div id="signup-view" class="view" style="display:none;">
+            <h2>Sign Up</h2>
+            <form id="signup-form">
+                <input type="text" id="signup-username" placeholder="Username" required>
+                <input type="email" id="signup-email" placeholder="Email" required>
+                <input type="password" id="signup-password" placeholder="Password (min 8 chars)" required>
+                <input type="password" id="signup-confirm-password" placeholder="Confirm Password" required>
+                <button type="submit">Sign Up</button>
+            </form>
+            <div id="signup-message"></div>
+        </div>
 
-    <!-- Loading Spinner -->
-    <div id="loading" class="loading" style="display: none;">
-        <div class="spinner"></div>
+        <!-- Email Verification View -->
+        <div id="verify-view" class="view" style="display:none;">
+            <h2>Email Verification</h2>
+            <p>Check your email for verification link or enter the token:</p>
+            <input type="text" id="verify-token" placeholder="Verification Token">
+            <button onclick="verifyEmail()">Verify</button>
+            <div id="verify-message"></div>
+        </div>
+
+        <!-- Login View -->
+        <div id="login-view" class="view" style="display:none;">
+            <h2>Login</h2>
+            <form id="login-form">
+                <input type="text" id="login-username" placeholder="Username or Email" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <label style="margin:8px 0;display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="login-remember"> Remember me
+                </label>
+                <button type="submit">Login</button>
+            </form>
+            <button onclick="showView('forgot-password')" class="secondary-button" style="margin-top: 10px;">Forgot Password?</button>
+            <div id="login-message"></div>
+        </div>
+
+        <!-- Forgot Password View -->
+        <div id="forgot-password-view" class="view" style="display:none;">
+            <h2>Forgot Password</h2>
+            <input type="email" id="forgot-email" placeholder="Enter your email">
+            <button onclick="requestPasswordReset()">Send Reset Link</button>
+            <div id="forgot-message"></div>
+        </div>
+
+        <!-- Reset Password View -->
+        <div id="reset-password-view" class="view" style="display:none;">
+            <h2>Reset Password</h2>
+            <input type="text" id="reset-token" placeholder="Reset Token">
+            <input type="password" id="reset-password" placeholder="New Password (min 8 chars)">
+            <input type="password" id="reset-confirm-password" placeholder="Confirm Password">
+            <button onclick="resetPassword()">Reset Password</button>
+            <div id="reset-message"></div>
+        </div>
+
+        <!-- Profile View -->
+        <div id="profile-view" class="view" style="display:none;">
+            <h2>User Profile</h2>
+            
+            <!-- Profile Picture Section -->
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div id="profile-picture-container" style="display: inline-block;">
+                    <img id="profile-picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Crect fill='%23ddd' width='150' height='150'/%3E%3Ctext x='50%25' y='50%25' font-size='40' fill='%23999' text-anchor='middle' dy='.3em'%3E👤%3C/text%3E%3C/svg%3E" 
+                                 style="width: 150px; height: 150px; border-radius: 50%; border: 3px solid #ddd; object-fit: cover;">
+                </div>
+                <div style="margin-top: 15px;">
+                    <input type="file" id="profile-picture-input" accept="image/*" style="display: none;">
+                    <button type="button" onclick="document.getElementById('profile-picture-input').click()" style="background-color: #2196F3;">
+                        Change Picture
+                    </button>
+                </div>
+            </div>
+
+            <!-- User Info Section -->
+            <div id="profile-info" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;"></div>
+
+            <!-- Edit Profile Form -->
+            <h3>Edit Profile</h3>
+            <form id="profile-form">
+                <input type="text" id="profile-first-name" placeholder="First Name">
+                <input type="text" id="profile-last-name" placeholder="Last Name">
+                <input type="text" id="profile-student-id" placeholder="Student ID">
+                <textarea id="profile-bio" placeholder="Bio" rows="4"></textarea>
+                <button type="submit">Update Profile</button>
+            </form>
+            <div id="profile-message"></div>
+        </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="js/utils.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/posts.js"></script>
-    <script src="js/profile.js"></script>
-    <script src="js/app.js"></script>
-
     <script>
-        // هندل کردن لینک بازیابی رمز عبور از ایمیل
-        document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const resetToken = urlParams.get('token');
-            
-            if (resetToken) {
-                // هدایت به صفحه تنظیم رمز عبور جدید
-                showPage('reset-password');
-                // ذخیره توکن در فرم
-                setTimeout(() => {
-                    const form = document.getElementById('reset-password-form');
-                    if (form) {
-                        form.dataset.token = resetToken;
-                    }
-                }, 100);
+        // Get API base URL dynamically from current location
+        const API_BASE = window.location.origin;
+
+        // Check if user is logged in on page load
+        window.addEventListener('load', () => {
+            const user = localStorage.getItem('user');
+            if (user) {
+                updateNavbarForLoggedIn();
+                showView('profile');
+            } else {
+                updateNavbarForLoggedOut();
             }
         });
+
+        // Update navbar based on login status
+        function updateNavbarForLoggedIn() {
+            document.getElementById('signup-btn').style.display = 'none';
+            document.getElementById('login-btn').style.display = 'none';
+            document.getElementById('profile-btn').style.display = 'block';
+            document.getElementById('logout-btn').style.display = 'block';
+            document.getElementById('posts-link').style.display = 'block';
+            document.getElementById('create-post-link').style.display = 'block';
+            document.getElementById('explore-link').style.display = 'block';
+        }
+
+        function updateNavbarForLoggedOut() {
+            document.getElementById('signup-btn').style.display = 'block';
+            document.getElementById('login-btn').style.display = 'block';
+            document.getElementById('profile-btn').style.display = 'none';
+            document.getElementById('logout-btn').style.display = 'none';
+            document.getElementById('posts-link').style.display = 'none';
+            document.getElementById('create-post-link').style.display = 'none';
+            document.getElementById('explore-link').style.display = 'none';
+        }
+
+        function showView(view) {
+            document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+            const viewElement = document.getElementById(view + '-view');
+            if (viewElement) {
+                viewElement.style.display = 'block';
+                if (view === 'profile') {
+                    loadProfile();
+                }
+            }
+        }
+
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error('Response error:', response.status, text);
+                    throw new Error(`HTTP ${response.status}: ${text}`);
+                }
+                const result = await response.json();
+                return { status: response.status, data: result };
+            } catch (error) {
+                console.error('API Error:', error);
+                console.error('API_BASE:', API_BASE);
+                console.error('Endpoint:', endpoint);
+                return { status: 500, data: { success: false, message: `Error: ${error.message}` } };
+            }
+        }
+
+        // Sign Up
+        document.getElementById('signup-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('signup-username').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const password_confirm = document.getElementById('signup-confirm-password').value;
+
+            const result = await apiCall('/api/signup/', 'POST', {
+                username, email, password, password_confirm
+            });
+
+            const message = document.getElementById('signup-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message + ' Check email to verify.';
+                document.getElementById('signup-form').reset();
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        });
+
+        // Verify Email
+        async function verifyEmail() {
+            const token = document.getElementById('verify-token').value;
+            if (!token) {
+                alert('Please enter verification token');
+                return;
+            }
+            const result = await apiCall(`/api/verify-email/${token}/`, 'GET');
+            const message = document.getElementById('verify-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message;
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        }
+
+        // Login
+        document.getElementById('login-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username_or_email = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const remember = document.getElementById('login-remember') ? document.getElementById('login-remember').checked : false;
+
+            const result = await apiCall('/api/login/', 'POST', {
+                username_or_email, password, remember
+            });
+
+            const message = document.getElementById('login-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message;
+                localStorage.setItem('user', JSON.stringify(result.data.user));
+                document.getElementById('login-form').reset();
+                updateNavbarForLoggedIn();
+                setTimeout(() => showView('profile'), 1000);
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        });
+
+        // Forgot Password
+        async function requestPasswordReset() {
+            const email = document.getElementById('forgot-email').value;
+            if (!email) {
+                alert('Please enter your email');
+                return;
+            }
+            const result = await apiCall('/api/password-reset/request/', 'POST', { email });
+            const message = document.getElementById('forgot-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message;
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        }
+
+        // Reset Password
+        async function resetPassword() {
+            const token = document.getElementById('reset-token').value;
+            const password = document.getElementById('reset-password').value;
+            const password_confirm = document.getElementById('reset-confirm-password').value;
+
+            if (!token || !password || !password_confirm) {
+                alert('Please fill all fields');
+                return;
+            }
+
+            const result = await apiCall(`/api/password-reset/${token}/`, 'POST', {
+                password, password_confirm
+            });
+
+            const message = document.getElementById('reset-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message;
+                document.getElementById('reset-token').value = '';
+                document.getElementById('reset-password').value = '';
+                document.getElementById('reset-confirm-password').value = '';
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        }
+
+        // Load Profile
+        async function loadProfile() {
+            const result = await apiCall('/api/profile/', 'GET');
+            if (result.data.success) {
+                const user = result.data.user;
+                
+                // Load profile picture
+                if (user.profile_picture) {
+                    document.getElementById('profile-picture').src = user.profile_picture;
+                }
+                
+                document.getElementById('profile-info').innerHTML = `
+                    <p><strong>Username:</strong> ${user.username}</p>
+                    <p><strong>Email:</strong> ${user.email}</p>
+                    <p><strong>First Name:</strong> ${user.first_name || 'N/A'}</p>
+                    <p><strong>Last Name:</strong> ${user.last_name || 'N/A'}</p>
+                    <p><strong>Student ID:</strong> ${user.student_id || 'N/A'}</p>
+                    <p><strong>Bio:</strong> ${user.bio || 'N/A'}</p>
+                `;
+                document.getElementById('profile-first-name').value = user.first_name || '';
+                document.getElementById('profile-last-name').value = user.last_name || '';
+                document.getElementById('profile-student-id').value = user.student_id || '';
+                document.getElementById('profile-bio').value = user.bio || '';
+            }
+        }
+
+        // Handle profile picture upload
+        document.getElementById('profile-picture-input')?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('profile_picture', file);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/profile/update-picture/`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Show preview immediately
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        document.getElementById('profile-picture').src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                    
+                    const message = document.getElementById('profile-message');
+                    message.className = 'message success';
+                    message.textContent = '✓ Profile picture updated!';
+                } else {
+                    const message = document.getElementById('profile-message');
+                    message.className = 'message error';
+                    message.textContent = '✗ ' + (data.message || 'Error updating picture');
+                }
+            } catch (error) {
+                const message = document.getElementById('profile-message');
+                message.className = 'message error';
+                message.textContent = '✗ Error uploading picture: ' + error.message;
+            }
+        });
+
+        // Update Profile
+        document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const first_name = document.getElementById('profile-first-name').value;
+            const last_name = document.getElementById('profile-last-name').value;
+            const student_id = document.getElementById('profile-student-id').value;
+            const bio = document.getElementById('profile-bio').value;
+
+            const result = await apiCall('/api/profile/update/', 'POST', {
+                first_name, last_name, student_id, bio
+            });
+
+            const message = document.getElementById('profile-message');
+            if (result.data.success) {
+                message.className = 'message success';
+                message.textContent = result.data.message;
+                loadProfile();
+            } else {
+                message.className = 'message error';
+                message.textContent = result.data.message;
+            }
+        });
+
+        // Logout
+        async function logoutUser() {
+            const result = await apiCall('/api/logout/', 'POST');
+            if (result.data.success) {
+                localStorage.removeItem('user');
+                updateNavbarForLoggedOut();
+                showView('home');
+            }
+        }
     </script>
 </body>
 </html>

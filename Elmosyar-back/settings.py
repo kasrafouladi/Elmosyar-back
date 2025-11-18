@@ -21,6 +21,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
+
 # Codespaces configuration
 if 'CODESPACE_NAME' in os.environ:
     codespace_name = config("CODESPACE_NAME", default='')

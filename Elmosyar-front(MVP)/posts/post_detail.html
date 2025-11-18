@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جزئیات پست</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background-color: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #2196F3; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        
+        .main-post { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .post-author { font-weight: bold; color: #2196F3; text-decoration: none; font-size: 18px; }
+        .post-author:hover { text-decoration: underline; }
+        .post-date { color: #999; font-size: 13px; }
+        .post-content { line-height: 1.8; font-size: 16px; margin-bottom: 15px; color: #333; }
+        .post-category { display: inline-block; background: #E3F2FD; color: #1976D2; padding: 6px 15px; border-radius: 15px; font-size: 13px; margin: 10px 0; }
+        .post-actions { display: flex; gap: 15px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+        .post-actions button { padding: 8px 16px; background: transparent; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .post-actions button:hover { background: #f5f5f5; }
+        
+        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 10px; }
+        
+        .reply-item, .comment-item { padding: 15px; border: 1px solid #eee; border-radius: 6px; margin-bottom: 12px; cursor: pointer; transition: background 0.2s; }
+        .reply-item:hover, .comment-item:hover { background: #f9f9f9; }
+        .item-author { font-weight: bold; color: #2196F3; text-decoration: none; margin-bottom: 8px; display: inline-block; }
+        .item-author:hover { text-decoration: underline; }
+        .item-content { color: #555; line-height: 1.6; margin-top: 8px; }
+        .item-date { color: #999; font-size: 12px; }
+        
+        .scrollable { max-height: 500px; overflow-y: auto; }
+        .scrollable::-webkit-scrollbar { width: 8px; }
+        .scrollable::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .scrollable::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .scrollable::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        .media-container { margin: 15px 0; }
+        .media-container img, .media-container video { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+        
+        .comment-form { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+        .comment-form textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: Arial; resize: vertical; min-height: 80px; }
+        .comment-form button { margin-top: 10px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .comment-form button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/posts/" class="back-link">← بازگشت به لیست پست‌ها</a>
+        
+        <div id="main-post"></div>
+        
+        <div class="section">
+            <div class="section-title">💬 کامنت‌ها (<span id="comments-count">0</span>)</div>
+            
+            <div class="comment-form">
+                <textarea id="comment-text" placeholder="کامنت خود را بنویسید..."></textarea>
+                <button onclick="submitComment()">ارسال کامنت</button>
+            </div>
+            
+            <div class="scrollable" id="comments-list"></div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">↩️ پاسخ‌ها (<span id="replies-count">0</span>)</div>
+            <div class="scrollable" id="replies-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const postId = {{ post_id }};
+
+        async function loadPost() {
+            try {
+                const res = await fetch(`${API_BASE}/api/posts/${postId}/`, {credentials: 'include'});
+                const data = await res.json();
+                
+                if (data.success) {
+                    displayMainPost(data.post);
+                    displayComments(data.post.comments || []);
+                    displayReplies(data.post.replies || []);
+                }
+            } catch (error) {
+                console.error('Error loading post:', error);
+            }
+        }
+
+        function displayMainPost(post) {
+            let mediaHtml = '';
+            if (post.media && post.media.length) {
+                mediaHtml = '<div class="media-container">';
+                post.media.forEach(m => {
+                    if (m.type === 'image') {
+                        mediaHtml += `<img src="${m.url}" alt="media">`;
+                    } else if (m.type === 'video') {
+                        mediaHtml += `<video src="${m.url}" controls></video>`;
+                    }
+                });
+                mediaHtml += '</div>';
+            }
+            
+            const categoryHtml = post.category ? `<span class="post-category">📁 ${post.category}</span>` : '';
+            const tagsHtml = post.tags && post.tags.length ? `<div style="color:#2196F3;font-size:13px;margin:10px 0;">🏷️ ${post.tags.join(', ')}</div>` : '';
+            
+            document.getElementById('main-post').innerHTML = `
+                <div class="main-post">
+                    <div class="post-header">
+                        <a href="/profiles/${post.author}/" class="post-author">@${post.author}</a>
+                        <span class="post-date">${new Date(post.created_at).toLocaleString('fa-IR')}</span>
+                    </div>
+                    <div class="post-content">${post.content}</div>
+                    ${mediaHtml}
+                    ${categoryHtml}
+                    ${tagsHtml}
+                    <div class="post-actions">
+                        <button onclick="likePost()">👍 لایک (${post.likes_count})</button>
+                        <button onclick="dislikePost()">👎 دیسلایک (${post.dislikes_count})</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayComments(comments) {
+            document.getElementById('comments-count').textContent = comments.length;
+            const container = document.getElementById('comments-list');
+            
+            if (!comments.length) {
+                container.innerHTML = '<p style="text-align:center;color:#999;padding:30px;">هنوز کامنتی ثبت نشده است.</p>';
+                return;
+            }
+            
+            container.innerHTML = comments.map(c => `
+                <div class="comment-item">
+                    <a href="/profiles/${c.user}/" class="item-author">@${c.user}</a>
+                    <span class="item-date">${new Date(c.created_at).toLocaleString('fa-IR')}</span>
+                    <div class="item-content">${c.content}</div>
+                </div>
+            `).join('');
+        }
+
+        function displayReplies(replies) {
+            document.getElementById('replies-count').textContent = replies.length;
+            const container = document.getElementById('replies-list');
+            
+            if (!replies.length) {
+                container.innerHTML = '<p style="text-align:center;color:#999;padding:30px;">هنوز پاسخی ثبت نشده است.</p>';
+                return;
+            }
+            
+            container.innerHTML = replies.map(r => `
+                <div class="reply-item" onclick="window.location.href='/posts/${r.id}/'">
+                    <a href="/profiles/${r.author}/" class="item-author" onclick="event.stopPropagation();">@${r.author}</a>
+                    <span class="item-date">${new Date(r.created_at).toLocaleString('fa-IR')}</span>
+                    <div class="item-content">${r.content}</div>
+                    ${r.category ? `<span class="post-category">📁 ${r.category}</span>` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function submitComment() {
+            const text = document.getElementById('comment-text').value.trim();
+            if (!text) {
+                alert('لطفا متن کامنت را وارد کنید');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/posts/${postId}/comment/`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: text}),
+                    credentials: 'include'
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('comment-text').value = '';
+                    loadPost();
+                } else {
+                    alert(data.message || 'خطا در ارسال کامنت');
+                }
+            } catch (error) {
+                alert('خطا: ' + error.message);
+            }
+        }
+
+        async function likePost() {
+            try {
+                await fetch(`${API_BASE}/api/posts/${postId}/like/`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                loadPost();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function dislikePost() {
+            try {
+                await fetch(`${API_BASE}/api/posts/${postId}/dislike/`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                loadPost();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        loadPost();
+    </script>
+</body>
+</html>
