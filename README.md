@@ -1,4 +1,4 @@
-# Elmosyar-back
+# elmosyar_back
 
 A Django-based authentication backend API providing user registration, email verification, login, profile management, and password reset functionality. Designed for local development with an easy setup and a production checklist.
 
@@ -19,7 +19,7 @@ A Django-based authentication backend API providing user registration, email ver
 1. Clone repository
 ```bash
 git clone <repository-url>
-cd Elmosyar-back
+cd elmosyar_back
 ```
 2. Create & activate venv, install deps
 ```bash
@@ -48,7 +48,7 @@ Local test URL: http://localhost:8000
 
 ## Project structure (overview)
 ```
-Elmosyar-back/
+elmosyar_back/
 ├── core/               # auth app (models, views, urls)
 │   ├── models.py       # User, Post, Comment, Like, Notification models
 │   ├── views.py        # API view functions and logic
@@ -81,7 +81,7 @@ Elmosyar-back/
 │       ├── images/
 │       ├── videos/
 │       └── media/
-├── Elmosyar-back/      # main Django project settings
+├── elmosyar_back/      # main Django project settings
 │   ├── __init__.py
 │   ├── asgi.py         # ASGI configuration for async
 │   ├── settings.py     # Django settings (DB, auth, apps, etc.)
@@ -326,7 +326,7 @@ For full details, refer to the project files and API routes in core/ and setting
 
 ### Project Purpose
 
-Elmosyar-back provides the backend infrastructure for a LinkedIn-like social network specifically tailored for IUST students and faculty, enabling:
+elmosyar_back provides the backend infrastructure for a LinkedIn-like social network specifically tailored for IUST students and faculty, enabling:
 - Secure user authentication and profile management
 - Academic and professional networking
 - Content sharing and community engagement
@@ -464,7 +464,7 @@ Elmosyar-back provides the backend infrastructure for a LinkedIn-like social net
 
 ### License & Attribution
 
-Elmosyar-back is developed for educational and community purposes at IUST. The platform respects user privacy and data security standards.
+elmosyar_back is developed for educational and community purposes at IUST. The platform respects user privacy and data security standards.
 
 ---
 

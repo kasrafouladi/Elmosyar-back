@@ -1,5 +1,5 @@
 """
-URL configuration for Elmosyar-back project.
+URL configuration for elmosyar_back project.
 
 Pure REST API - No HTML rendering
 """
@@ -28,8 +28,14 @@ def api_root(request):
                 'get_profile': '/api/profile/',
                 'update_profile': '/api/profile/update/',
                 'update_picture': '/api/profile/update-picture/',
-                'get_user': '/api/users/<username>/',
+                'get_user': '/api/users/<username>/profile/',
                 'user_posts': '/api/users/<username>/posts/',
+            },
+            'social': {
+                'follow': '/api/users/<username>/follow/',
+                'unfollow': '/api/users/<username>/unfollow/',
+                'followers': '/api/users/<username>/followers/',
+                'following': '/api/users/<username>/following/',
             },
             'posts': {
                 'list_create': '/api/posts/',
@@ -40,10 +46,22 @@ def api_root(request):
                 'repost': '/api/posts/<id>/repost/',
                 'thread': '/api/posts/<id>/thread/',
                 'by_category': '/api/posts/category/<category>/',
+                'saved_posts': '/api/posts/saved/',
+                'save_post': '/api/posts/<id>/save/',
+                'unsave_post': '/api/posts/<id>/unsave/',
+            },
+            'comments': {
+                'like': '/api/comments/<id>/like/',
             },
             'notifications': {
                 'list': '/api/notifications/',
                 'mark_read': '/api/notifications/mark-read/',
+            },
+            'messaging': {
+                'conversations': '/api/conversations/',
+                'conversation_detail': '/api/conversations/<id>/',
+                'send_message': '/api/conversations/<id>/send/',
+                'start_conversation': '/api/conversations/start/<username>/',
             }
         }
     })
@@ -52,8 +70,8 @@ urlpatterns = [
     # API root
     path('', api_root, name='api_root'),
     
-    # API routes
-    path('api/', include('Elmosyar-back.core.urls')),
+    # API routes - تغییر داده شده
+    path('api/', include('core.urls')),
     
     # Admin panel
     path('admin/', admin.site.urls),

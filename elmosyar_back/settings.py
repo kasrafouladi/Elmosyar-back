@@ -1,5 +1,5 @@
 """
-Django settings for Elmosyar-back project.
+Django settings for elmosyar_back project.
 Optimized for Pure REST API - Allow all origins
 """
 
@@ -17,7 +17,7 @@ DEBUG = config("DEBUG", default=True, cast=bool)
 ALLOWED_HOSTS = ['*']  # Allow all hosts
 
 # CORS Configuration - Allow ALL origins
-CORS_ALLOW_ALL_ORIGINS = True  # این خط اصلی هست
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # CORS headers to expose
@@ -66,7 +66,7 @@ INSTALLED_APPS = [
     "rest_framework",
     
     # Local
-    "Elmosyar-back.core",
+    "core"
 ]
 
 # Middleware - CORS must be at the top
@@ -82,8 +82,8 @@ MIDDLEWARE = [
 ]
 
 # URLs
-ROOT_URLCONF = "Elmosyar-back.urls"
-WSGI_APPLICATION = "Elmosyar-back.wsgi.application"
+ROOT_URLCONF = "urls"
+WSGI_APPLICATION = "wsgi.application"
 
 # Templates (only for admin panel)
 TEMPLATES = [
@@ -135,7 +135,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom user model
-AUTH_USER_MODEL = "core.User"
+AUTH_USER_MODEL = "core.User"  # تغییر داده شده
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -160,19 +160,19 @@ REST_FRAMEWORK = {
 
 # Session settings for cross-origin
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'  # برای توسعه 'None'
-SESSION_COOKIE_SECURE = False  # در توسعه False، در production True
+SESSION_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = False
 
 # CSRF settings for cross-origin API
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
+CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
-CSRF_COOKIE_SECURE = False  # در توسعه False، در production True
+CSRF_COOKIE_SECURE = False
 
 # در حالت development همه origins رو برای CSRF قبول کن
 if DEBUG:
-    CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']
+    CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*', 'http://localhost:3000', 'http://127.0.0.1:3000']
 else:
-    CSRF_TRUSTED_ORIGINS = []  # در production باید مشخص کنید
+    CSRF_TRUSTED_ORIGINS = []
 
 # Email Configuration
 EMAIL_BACKEND = config(

@@ -6,19 +6,21 @@ from django.contrib.auth import authenticate, login, logout
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.conf import settings
+from django.db.models import Q, Count
+from django.core.paginator import Paginator
 import json
 from datetime import timedelta
-
-from .models import User, Post, PostMedia, Comment, Notification, Reaction
 import mimetypes
+
+from .models import User, Post, PostMedia, Comment, Notification, Reaction, Conversation, Message
 
 
 # ════════════════════════════════════════════════════════════
 # 🔧 Helper Functions
 # ════════════════════════════════════════════════════════════
 
-def serialize_user(user, include_sensitive=False):
-    """Serialize user data"""
+def serialize_user(user, include_sensitive=False, current_user=None):
+    """سریالایز کردن اطلاعات کاربر"""
     data = {
         'id': user.id,
         'username': user.username,
@@ -27,6 +29,9 @@ def serialize_user(user, include_sensitive=False):
         'profile_picture': user.profile_picture.url if user.profile_picture else None,
         'bio': user.bio,
         'student_id': user.student_id,
+        'followers_count': user.followers_count,
+        'following_count': user.following_count,
+        'posts_count': user.posts_count,
     }
     
     if include_sensitive:
@@ -36,17 +41,23 @@ def serialize_user(user, include_sensitive=False):
             'created_at': user.created_at.isoformat(),
         })
     
+    # اضافه کردن وضعیت فالو برای کاربر جاری
+    if current_user and current_user.is_authenticated:
+        data['is_following'] = current_user.following.filter(id=user.id).exists()
+        data['is_me'] = current_user.id == user.id
+    
     return data
 
 
 def serialize_post(post, include_user_info=True, current_user=None):
-    """Serialize post data"""
+    """سریالایز کردن اطلاعات پست"""
     media_list = []
     for m in post.media.all():
         media_list.append({
             'id': m.id,
             'url': m.file.url if m.file else '',
             'type': m.media_type,
+            'caption': m.caption,
         })
     
     data = {
@@ -56,11 +67,11 @@ def serialize_post(post, include_user_info=True, current_user=None):
         'created_at': post.created_at.isoformat(),
         'updated_at': post.updated_at.isoformat(),
         'tags': [t.strip() for t in post.tags.split(',')] if post.tags else [],
-        'mentions': [u.username for u in post.mentions.all()],
+        'mentions': [serialize_user(u) for u in post.mentions.all()],
         'media': media_list,
-        'likes_count': post.reactions.filter(reaction='like').count(),
-        'dislikes_count': post.reactions.filter(reaction='dislike').count(),
-        'comments_count': post.comments.count(),
+        'likes_count': post.likes_count,
+        'dislikes_count': post.dislikes_count,
+        'comments_count': post.comments_count,
         'reposts_count': post.reposts.count(),
         'replies_count': post.replies.count(),
         'is_repost': post.is_repost,
@@ -70,30 +81,38 @@ def serialize_post(post, include_user_info=True, current_user=None):
     }
     
     if include_user_info:
-        data['author_info'] = serialize_user(post.author, include_sensitive=False)
+        data['author_info'] = serialize_user(post.author, include_sensitive=False, current_user=current_user)
     
-    # Add user's reaction status if authenticated
+    # اضافه کردن وضعیت ری‌اکشن کاربر جاری
     if current_user and current_user.is_authenticated:
         user_reaction = post.reactions.filter(user=current_user).first()
         data['user_reaction'] = user_reaction.reaction if user_reaction else None
+        data['is_saved'] = post.saved_by.filter(id=current_user.id).exists()
     
     return data
 
 
-def serialize_comment(comment):
-    """Serialize comment data"""
-    return {
+def serialize_comment(comment, current_user=None):
+    """سریالایز کردن اطلاعات کامنت"""
+    data = {
         'id': comment.id,
         'user': comment.user.username,
-        'user_info': serialize_user(comment.user, include_sensitive=False),
+        'user_info': serialize_user(comment.user, include_sensitive=False, current_user=current_user),
         'content': comment.content,
         'created_at': comment.created_at.isoformat(),
         'parent_id': comment.parent.id if comment.parent else None,
+        'likes_count': comment.likes_count,
+        'replies_count': comment.replies_count,
     }
+    
+    if current_user and current_user.is_authenticated:
+        data['is_liked'] = comment.likes.filter(id=current_user.id).exists()
+    
+    return data
 
 
 def serialize_notification(notification):
-    """Serialize notification data"""
+    """سریالایز کردن اطلاعات نوتیفیکیشن"""
     return {
         'id': notification.id,
         'sender': notification.sender.username,
@@ -104,6 +123,41 @@ def serialize_notification(notification):
         'message': notification.message,
         'is_read': notification.is_read,
         'created_at': notification.created_at.isoformat(),
+    }
+
+
+def serialize_conversation(conversation, current_user):
+    """سریالایز کردن اطلاعات مکالمه"""
+    other_user = conversation.participants.exclude(id=current_user.id).first()
+    last_message = conversation.messages.last()
+    
+    return {
+        'id': conversation.id,
+        'other_user': serialize_user(other_user, include_sensitive=False) if other_user else None,
+        'last_message': {
+            'content': last_message.content[:100] + '...' if last_message and len(last_message.content) > 100 else last_message.content if last_message else '',
+            'sender': last_message.sender.username if last_message else '',
+            'created_at': last_message.created_at.isoformat() if last_message else None,
+            'is_read': last_message.is_read if last_message else True,
+        } if last_message else None,
+        'unread_count': conversation.messages.filter(is_read=False).exclude(sender=current_user).count(),
+        'updated_at': conversation.updated_at.isoformat(),
+    }
+
+
+def serialize_message(message):
+    """سریالایز کردن اطلاعات پیام"""
+    return {
+        'id': message.id,
+        'sender': serialize_user(message.sender, include_sensitive=False),
+        'content': message.content,
+        'image': message.image.url if message.image else None,
+        'file': {
+            'url': message.file.url if message.file else None,
+            'name': message.file.name.split('/')[-1] if message.file else None,
+        } if message.file else None,
+        'is_read': message.is_read,
+        'created_at': message.created_at.isoformat(),
     }
 
 
@@ -142,10 +196,25 @@ def index(request):
                 'thread': '/api/posts/{post_id}/thread/',
                 'by_category': '/api/posts/category/{category_id}/',
                 'user_posts': '/api/users/{username}/posts/',
+                'saved_posts': '/api/posts/saved/',
+                'save_post': '/api/posts/{post_id}/save/',
+                'unsave_post': '/api/posts/{post_id}/unsave/',
+            },
+            'social': {
+                'follow': '/api/users/{username}/follow/',
+                'unfollow': '/api/users/{username}/unfollow/',
+                'followers': '/api/users/{username}/followers/',
+                'following': '/api/users/{username}/following/',
             },
             'notifications': {
                 'list': '/api/notifications/',
                 'mark_read': '/api/notifications/mark-read/',
+            },
+            'messaging': {
+                'conversations': '/api/conversations/',
+                'conversation_detail': '/api/conversations/{conversation_id}/',
+                'send_message': '/api/conversations/{conversation_id}/send/',
+                'start_conversation': '/api/conversations/start/{username}/',
             }
         }
     })
@@ -249,8 +318,7 @@ def verify_email(request, token):
     try:
         user = get_object_or_404(User, email_verification_token=token)
         
-        token_age = timezone.now() - user.email_verification_sent_at
-        if token_age > timedelta(hours=24):
+        if not user.is_email_verification_token_valid():
             return JsonResponse({
                 'success': False,
                 'message': 'Verification token has expired'
@@ -260,9 +328,13 @@ def verify_email(request, token):
         user.is_active = True
         user.save()
         
+        # لاگین کردن کاربر بعد از تأیید ایمیل
+        login(request, user)
+        
         return JsonResponse({
             'success': True,
-            'message': 'Email verified successfully. You can now login.'
+            'message': 'Email verified successfully. You are now logged in.',
+            'user': serialize_user(user, include_sensitive=True)
         })
     except Exception as e:
         return JsonResponse({
@@ -460,7 +532,7 @@ def get_profile(request):
 
     return JsonResponse({
         'success': True,
-        'user': serialize_user(request.user, include_sensitive=True)
+        'user': serialize_user(request.user, include_sensitive=True, current_user=request.user)
     })
 
 
@@ -469,12 +541,12 @@ def get_user_profile(request, username):
     """Get any user's public profile"""
     user = get_object_or_404(User, username=username)
     
-    # If it's the current user, include sensitive info
+    # اگر کاربر جاری باشد، اطلاعات حساس شامل شود
     include_sensitive = request.user.is_authenticated and request.user.id == user.id
     
     return JsonResponse({
         'success': True,
-        'user': serialize_user(user, include_sensitive=include_sensitive)
+        'user': serialize_user(user, include_sensitive=include_sensitive, current_user=request.user)
     })
 
 
@@ -503,7 +575,7 @@ def update_profile(request):
         return JsonResponse({
             'success': True,
             'message': 'Profile updated successfully',
-            'user': serialize_user(user, include_sensitive=True)
+            'user': serialize_user(user, include_sensitive=True, current_user=request.user)
         })
 
     except json.JSONDecodeError:
@@ -560,6 +632,100 @@ def update_profile_picture(request):
 
 
 # ════════════════════════════════════════════════════════════
+# 🤝 Social Endpoints
+# ════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def follow_user(request, username):
+    """Follow a user"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    user_to_follow = get_object_or_404(User, username=username)
+    
+    if user_to_follow == request.user:
+        return JsonResponse({
+            'success': False,
+            'message': 'You cannot follow yourself'
+        }, status=400)
+    
+    if request.user.follow(user_to_follow):
+        # ایجاد نوتیفیکیشن
+        Notification.objects.create(
+            recipient=user_to_follow,
+            sender=request.user,
+            notif_type='follow',
+            message=f'{request.user.username} started following you'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'You are now following {username}',
+            'followers_count': user_to_follow.followers_count
+        })
+    else:
+        return JsonResponse({
+            'success': False,
+            'message': f'You are already following {username}'
+        }, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def unfollow_user(request, username):
+    """Unfollow a user"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    user_to_unfollow = get_object_or_404(User, username=username)
+    
+    if request.user.unfollow(user_to_unfollow):
+        return JsonResponse({
+            'success': True,
+            'message': f'You have unfollowed {username}',
+            'followers_count': user_to_unfollow.followers_count
+        })
+    else:
+        return JsonResponse({
+            'success': False,
+            'message': f'You are not following {username}'
+        }, status=400)
+
+
+@require_http_methods(["GET"])
+def user_followers(request, username):
+    """Get user's followers"""
+    user = get_object_or_404(User, username=username)
+    followers = user.followers.all()
+    
+    return JsonResponse({
+        'success': True,
+        'followers': [serialize_user(f, current_user=request.user) for f in followers],
+        'count': len(followers)
+    })
+
+
+@require_http_methods(["GET"])
+def user_following(request, username):
+    """Get users that this user is following"""
+    user = get_object_or_404(User, username=username)
+    following = user.following.all()
+    
+    return JsonResponse({
+        'success': True,
+        'following': [serialize_user(f, current_user=request.user) for f in following],
+        'count': len(following)
+    })
+
+
+# ════════════════════════════════════════════════════════════
 # 📝 Post Endpoints
 # ════════════════════════════════════════════════════════════
 
@@ -569,95 +735,110 @@ def posts_list_create(request):
     """List all posts or create new post"""
     
     if request.method == 'GET':
-        # Get query parameters
+        # پارامترهای جستجو
         category = request.GET.get('category')
-        limit = int(request.GET.get('limit', 100))
+        username = request.GET.get('username')
+        limit = int(request.GET.get('limit', 20))
+        offset = int(request.GET.get('offset', 0))
         
-        # Build query
+        # ساخت کوئری
         query = Post.objects.filter(parent=None)
+        
         if category:
             query = query.filter(category=category)
         
+        if username:
+            user = get_object_or_404(User, username=username)
+            query = query.filter(author=user)
+        
         posts = query.select_related('author').prefetch_related(
-            'media', 'mentions'
-        ).order_by('-created_at')[:limit]
+            'media', 'mentions', 'reactions'
+        ).order_by('-created_at')[offset:offset + limit]
         
         return JsonResponse({
             'success': True,
             'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in posts],
-            'count': len(posts)
+            'count': len(posts),
+            'has_more': len(posts) == limit
         })
     
-    # POST - Create new post
+    # POST - ایجاد پست جدید
     if not request.user.is_authenticated:
         return JsonResponse({
             'success': False,
             'message': 'Authentication required'
         }, status=401)
 
-    content = request.POST.get('content', '').strip()
-    tags = request.POST.get('tags', '').strip()
-    mentions_raw = request.POST.get('mentions', '').strip()
-    parent_id = request.POST.get('parent')
-    category = request.POST.get('category', '').strip()
+    try:
+        content = request.POST.get('content', '').strip()
+        tags = request.POST.get('tags', '').strip()
+        mentions_raw = request.POST.get('mentions', '').strip()
+        parent_id = request.POST.get('parent')
+        category = request.POST.get('category', '').strip()
 
-    if not content and not request.FILES:
+        if not content and not request.FILES:
+            return JsonResponse({
+                'success': False,
+                'message': 'Post content or media required'
+            }, status=400)
+
+        # دسته‌بندی برای پست‌های اصلی الزامی است
+        if not parent_id and not category:
+            return JsonResponse({
+                'success': False,
+                'message': 'Room/Category is required'
+            }, status=400)
+
+        parent = None
+        if parent_id:
+            parent = Post.objects.filter(id=parent_id).first()
+
+        post = Post.objects.create(
+            author=request.user,
+            content=content,
+            tags=tags,
+            parent=parent,
+            category=category
+        )
+
+        # مدیریت منشن‌ها
+        if mentions_raw:
+            usernames = [u.strip() for u in mentions_raw.split(',') if u.strip()]
+            mentioned_users = User.objects.filter(username__in=usernames)
+            for mu in mentioned_users:
+                post.mentions.add(mu)
+                if mu != request.user:
+                    Notification.objects.create(
+                        recipient=mu,
+                        sender=request.user,
+                        notif_type='mention',
+                        post=post,
+                        message=f'{request.user.username} mentioned you in a post'
+                    )
+
+        # مدیریت فایل‌های مدیا
+        for f in request.FILES.getlist('media'):
+            ctype = f.content_type or mimetypes.guess_type(f.name)[0] or ''
+            if ctype.startswith('image/'):
+                mtype = 'image'
+            elif ctype.startswith('video/'):
+                mtype = 'video'
+            elif ctype.startswith('audio/'):
+                mtype = 'audio'
+            else:
+                mtype = 'file'
+            PostMedia.objects.create(post=post, file=f, media_type=mtype)
+
+        return JsonResponse({
+            'success': True,
+            'post': serialize_post(post, include_user_info=True, current_user=request.user)
+        }, status=201)
+
+    except Exception as e:
         return JsonResponse({
             'success': False,
-            'message': 'Post content or media required'
-        }, status=400)
-
-    # Category is required for main posts (not replies)
-    if not parent_id and not category:
-        return JsonResponse({
-            'success': False,
-            'message': 'Room/Category is required'
-        }, status=400)
-
-    parent = None
-    if parent_id:
-        parent = Post.objects.filter(id=parent_id).first()
-
-    post = Post.objects.create(
-        author=request.user,
-        content=content,
-        tags=tags,
-        parent=parent,
-        category=category
-    )
-
-    # Handle mentions
-    if mentions_raw:
-        usernames = [u.strip() for u in mentions_raw.split(',') if u.strip()]
-        mentioned_users = User.objects.filter(username__in=usernames)
-        for mu in mentioned_users:
-            post.mentions.add(mu)
-            if mu != request.user:
-                Notification.objects.create(
-                    recipient=mu,
-                    sender=request.user,
-                    notif_type='mention',
-                    post=post,
-                    message=f'{request.user.username} mentioned you'
-                )
-
-    # Handle media files
-    for f in request.FILES.getlist('media'):
-        ctype = f.content_type or mimetypes.guess_type(f.name)[0] or ''
-        if ctype.startswith('image/'):
-            mtype = 'image'
-        elif ctype.startswith('video/'):
-            mtype = 'video'
-        elif ctype.startswith('audio/'):
-            mtype = 'audio'
-        else:
-            mtype = 'file'
-        PostMedia.objects.create(post=post, file=f, media_type=mtype)
-
-    return JsonResponse({
-        'success': True,
-        'post': serialize_post(post, include_user_info=True, current_user=request.user)
-    }, status=201)
+            'message': str(e)
+        }, status=500)
 
 
 @require_http_methods(["GET"])
@@ -668,7 +849,7 @@ def post_detail(request, post_id):
     
     # Get comments
     comments = Comment.objects.filter(post=post).select_related('user').order_by('created_at')
-    data['comments'] = [serialize_comment(c) for c in comments]
+    data['comments'] = [serialize_comment(c, current_user=request.user) for c in comments]
     
     # Get replies
     replies = Post.objects.filter(parent=post).select_related('author').prefetch_related(
@@ -811,6 +992,7 @@ def post_comment(request, post_id):
         parent=parent
     )
     
+    # ایجاد نوتیفیکیشن
     if post.author != request.user:
         Notification.objects.create(
             recipient=post.author,
@@ -821,9 +1003,20 @@ def post_comment(request, post_id):
             message=f'{request.user.username} commented on your post'
         )
     
+    # اگر کامنت پاسخ به کامنت دیگری است
+    if parent and parent.user != request.user:
+        Notification.objects.create(
+            recipient=parent.user,
+            sender=request.user,
+            notif_type='reply',
+            post=post,
+            comment=comment,
+            message=f'{request.user.username} replied to your comment'
+        )
+    
     return JsonResponse({
         'success': True,
-        'comment': serialize_comment(comment),
+        'comment': serialize_comment(comment, current_user=request.user),
         'comments_count': post.comments.count()
     })
 
@@ -903,7 +1096,7 @@ def user_posts(request, username):
         'success': True,
         'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in posts],
         'username': username,
-        'user': serialize_user(user, include_sensitive=False),
+        'user': serialize_user(user, include_sensitive=False, current_user=request.user),
         'count': len(posts)
     })
 
@@ -925,6 +1118,103 @@ def post_thread(request, post_id):
     return JsonResponse({
         'success': True,
         'thread': data
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def save_post(request, post_id):
+    """Save a post"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    post = get_object_or_404(Post, id=post_id)
+    
+    if post.saved_by.filter(id=request.user.id).exists():
+        return JsonResponse({
+            'success': False,
+            'message': 'Post already saved'
+        }, status=400)
+    
+    post.saved_by.add(request.user)
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Post saved successfully'
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def unsave_post(request, post_id):
+    """Unsave a post"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    post = get_object_or_404(Post, id=post_id)
+    
+    if not post.saved_by.filter(id=request.user.id).exists():
+        return JsonResponse({
+            'success': False,
+            'message': 'Post not saved'
+        }, status=400)
+    
+    post.saved_by.remove(request.user)
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Post unsaved successfully'
+    })
+
+
+@require_http_methods(["GET"])
+def saved_posts(request):
+    """Get user's saved posts"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    saved_posts = request.user.saved_posts.filter(parent=None)
+    
+    return JsonResponse({
+        'success': True,
+        'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in saved_posts],
+        'count': len(saved_posts)
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def like_comment(request, comment_id):
+    """Like/unlike a comment"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    comment = get_object_or_404(Comment, id=comment_id)
+    
+    if comment.likes.filter(id=request.user.id).exists():
+        comment.likes.remove(request.user)
+        action = 'unliked'
+    else:
+        comment.likes.add(request.user)
+        action = 'liked'
+    
+    return JsonResponse({
+        'success': True,
+        'message': f'Comment {action}',
+        'likes_count': comment.likes_count,
+        'is_liked': comment.likes.filter(id=request.user.id).exists()
     })
 
 
@@ -986,3 +1276,129 @@ def notifications_mark_read(request):
         'success': True,
         'message': 'Notifications marked as read'
     })
+
+
+# ════════════════════════════════════════════════════════════
+# 💬 Messaging Endpoints
+# ════════════════════════════════════════════════════════════
+
+@require_http_methods(["GET"])
+def conversations_list(request):
+    """Get user's conversations"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    conversations = Conversation.objects.filter(participants=request.user)
+    
+    return JsonResponse({
+        'success': True,
+        'conversations': [serialize_conversation(c, request.user) for c in conversations],
+        'count': len(conversations)
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def start_conversation(request, username):
+    """Start a new conversation"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    other_user = get_object_or_404(User, username=username)
+    
+    if other_user == request.user:
+        return JsonResponse({
+            'success': False,
+            'message': 'Cannot start conversation with yourself'
+        }, status=400)
+    
+    # بررسی وجود مکالمه قبلی
+    conversation = Conversation.objects.filter(participants=request.user).filter(participants=other_user).first()
+    
+    if not conversation:
+        conversation = Conversation.objects.create()
+        conversation.participants.add(request.user, other_user)
+    
+    return JsonResponse({
+        'success': True,
+        'conversation_id': conversation.id,
+        'message': 'Conversation started successfully'
+    })
+
+
+@require_http_methods(["GET"])
+def conversation_detail(request, conversation_id):
+    """Get conversation messages"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+    
+    # علامت‌گذاری پیام‌ها به عنوان خوانده شده
+    conversation.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
+    
+    messages = conversation.messages.all()
+    
+    return JsonResponse({
+        'success': True,
+        'conversation': serialize_conversation(conversation, request.user),
+        'messages': [serialize_message(m) for m in messages],
+        'count': len(messages)
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def send_message(request, conversation_id):
+    """Send a message in conversation"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'message': 'Authentication required'
+        }, status=401)
+    
+    conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+    
+    try:
+        data = request.POST
+        content = data.get('content', '').strip()
+        image = request.FILES.get('image')
+        file = request.FILES.get('file')
+        
+        if not content and not image and not file:
+            return JsonResponse({
+                'success': False,
+                'message': 'Message content or file is required'
+            }, status=400)
+        
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=content,
+            image=image,
+            file=file
+        )
+        
+        # آپدیت زمان مکالمه
+        conversation.updated_at = timezone.now()
+        conversation.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': serialize_message(message)
+        }, status=201)
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
