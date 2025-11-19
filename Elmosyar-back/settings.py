@@ -1,6 +1,6 @@
 """
 Django settings for Elmosyar-back project.
-Optimized for Pure REST API
+Optimized for Pure REST API - Allow all origins
 """
 
 import os
@@ -14,24 +14,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY", default='django-insecure-change-in-production')
 DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1', '*']
+ALLOWED_HOSTS = ['*']  # Allow all hosts
 
-# CORS Configuration - Important for separate frontend
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",  # Vite default
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",  # Vue CLI default
-    "http://127.0.0.1:8080",
-]
-
-# Allow credentials (cookies, sessions)
+# CORS Configuration - Allow ALL origins
+CORS_ALLOW_ALL_ORIGINS = True  # این خط اصلی هست
 CORS_ALLOW_CREDENTIALS = True
-
-# Allow all origins in development (optional - less secure)
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
 
 # CORS headers to expose
 CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
@@ -46,12 +33,24 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
+# Allowed headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Codespaces configuration
 if 'CODESPACE_NAME' in os.environ:
     codespace_name = config("CODESPACE_NAME", default='')
     codespace_domain = config("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", default='')
     CSRF_TRUSTED_ORIGINS = [f'https://{codespace_name}-8000.{codespace_domain}']
-    CORS_ALLOWED_ORIGINS.append(f'https://{codespace_name}-3000.{codespace_domain}')
 
 # Apps
 INSTALLED_APPS = [
@@ -70,7 +69,7 @@ INSTALLED_APPS = [
     "Elmosyar-back.core",
 ]
 
-# Middleware
+# Middleware - CORS must be at the top
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # Must be first
     "django.middleware.security.SecurityMiddleware",
@@ -159,16 +158,21 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 100,
 }
 
-# Session settings
+# Session settings for cross-origin
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'  # or 'None' for cross-origin
-SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS
+SESSION_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'  # برای توسعه 'None'
+SESSION_COOKIE_SECURE = False  # در توسعه False، در production True
 
-# CSRF settings for API
+# CSRF settings for cross-origin API
 CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = not DEBUG
-CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS if DEBUG else []
+CSRF_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
+CSRF_COOKIE_SECURE = False  # در توسعه False، در production True
+
+# در حالت development همه origins رو برای CSRF قبول کن
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']
+else:
+    CSRF_TRUSTED_ORIGINS = []  # در production باید مشخص کنید
 
 # Email Configuration
 EMAIL_BACKEND = config(
@@ -203,6 +207,11 @@ if DEBUG:
             'django': {
                 'handlers': ['console'],
                 'level': 'INFO',
+                'propagate': False,
+            },
+            'corsheaders': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
                 'propagate': False,
             },
         },
