@@ -1,48 +1,1654 @@
 <!DOCTYPE html>
-<html lang="fa">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Social Network</title>
-    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --background-color: #f5f5f5;
+            --card-color: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+            --success-color: #27ae60;
+            --error-color: #e74c3c;
+            --warning-color: #f39c12;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--card-color);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+
+        .nav-links li {
+            margin-left: 20px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-color);
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        .nav-links a:hover {
+            background-color: var(--background-color);
+        }
+
+        .nav-links a.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        /* Auth Forms */
+        .auth-container {
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 30px;
+            background-color: var(--card-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .auth-form h2 {
+            margin-bottom: 20px;
+            text-align: center;
+            color: var(--primary-color);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: var(--secondary-color);
+        }
+
+        .btn-block {
+            display: block;
+            width: 100%;
+        }
+
+        .form-footer {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .form-footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            margin-top: 30px;
+        }
+
+        .sidebar {
+            width: 25%;
+            padding-right: 20px;
+        }
+
+        .feed {
+            width: 50%;
+        }
+
+        .right-sidebar {
+            width: 25%;
+            padding-left: 20px;
+        }
+
+        .card {
+            background-color: var(--card-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 500;
+        }
+
+        .card-body {
+            padding: 15px;
+        }
+
+        /* Post */
+        .post {
+            margin-bottom: 20px;
+        }
+
+        .post-header {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+        }
+
+        .post-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .post-user-info h4 {
+            margin-bottom: 2px;
+        }
+
+        .post-user-info span {
+            font-size: 12px;
+            color: #777;
+        }
+
+        .post-content {
+            padding: 0 15px 15px;
+        }
+
+        .post-actions {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .post-action {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            color: #777;
+        }
+
+        .post-action:hover {
+            color: var(--primary-color);
+        }
+
+        .post-action.active {
+            color: var(--primary-color);
+        }
+
+        .post-action svg {
+            margin-right: 5px;
+        }
+
+        /* Create Post */
+        .create-post {
+            margin-bottom: 20px;
+        }
+
+        .create-post textarea {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            resize: none;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .create-post-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Profile */
+        .profile-header {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-right: 20px;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 24px;
+        }
+
+        .profile-info h2 {
+            margin-bottom: 5px;
+        }
+
+        .profile-stats {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        .profile-stat {
+            margin-right: 20px;
+        }
+
+        .profile-stat span {
+            font-weight: bold;
+        }
+
+        /* Messages */
+        .conversation-list {
+            list-style: none;
+        }
+
+        .conversation-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+
+        .conversation-item:hover {
+            background-color: var(--background-color);
+        }
+
+        .conversation-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .conversation-info {
+            flex: 1;
+        }
+
+        .conversation-name {
+            font-weight: 500;
+        }
+
+        .conversation-last-message {
+            font-size: 14px;
+            color: #777;
+        }
+
+        .conversation-time {
+            font-size: 12px;
+            color: #777;
+        }
+
+        .chat-container {
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            max-width: 70%;
+        }
+
+        .message.sent {
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .message-content {
+            padding: 10px 15px;
+            border-radius: 18px;
+            display: inline-block;
+        }
+
+        .message.sent .message-content {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .message.received .message-content {
+            background-color: var(--border-color);
+            color: var(--text-color);
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #777;
+            margin-top: 5px;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            margin-right: 10px;
+        }
+
+        /* Notifications */
+        .notification-list {
+            list-style: none;
+        }
+
+        .notification-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+        }
+
+        .notification-item.unread {
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+
+        .notification-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-time {
+            font-size: 12px;
+            color: #777;
+        }
+
+        /* Utility Classes */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .mt-10 {
+            margin-top: 10px;
+        }
+
+        .mb-10 {
+            margin-bottom: 10px;
+        }
+
+        .ml-10 {
+            margin-left: 10px;
+        }
+
+        .mr-10 {
+            margin-right: 10px;
+        }
+
+        .d-flex {
+            display: flex;
+        }
+
+        .align-center {
+            align-items: center;
+        }
+
+        .justify-between {
+            justify-content: space-between;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar, .feed, .right-sidebar {
+                width: 100%;
+                padding: 0;
+                margin-bottom: 20px;
+            }
+
+            .navbar {
+                flex-direction: column;
+            }
+
+            .nav-links {
+                margin-top: 15px;
+            }
+
+            .nav-links li {
+                margin: 0 10px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <header class="header">
-            <div class="container">
-                <h1 class="logo">Social Network</h1>
-                <nav class="nav" id="nav">
-                    <!-- Navigation will be populated by JS -->
-                </nav>
-            </div>
-        </header>
+    <!-- Header/Navigation -->
+    <header>
+        <div class="container">
+            <nav class="navbar">
+                <div class="logo">SocialNetwork</div>
+                <ul class="nav-links">
+                    <li><a href="#" class="nav-link" data-page="home">Home</a></li>
+                    <li><a href="#" class="nav-link" data-page="profile">Profile</a></li>
+                    <li><a href="#" class="nav-link" data-page="messages">Messages</a></li>
+                    <li><a href="#" class="nav-link" data-page="notifications">Notifications</a></li>
+                    <li class="auth-links">
+                        <a href="#" class="nav-link" id="login-link" data-page="login">Login</a>
+                        <a href="#" class="nav-link" id="signup-link" data-page="signup">Sign Up</a>
+                        <a href="#" class="nav-link hidden" id="logout-link">Logout</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
 
-        <main class="main">
-            <div class="container">
-                <div id="content">
-                    <!-- Dynamic content will be loaded here -->
-                    <div class="welcome">
-                        <h2>به شبکه اجتماعی خوش آمدید</h2>
-                        <p>لطفاً وارد شوید یا ثبت نام کنید</p>
-                        <div class="auth-buttons">
-                            <button onclick="loadPage('login')" class="btn btn-primary">ورود</button>
-                            <button onclick="loadPage('signup')" class="btn btn-secondary">ثبت نام</button>
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Authentication Pages -->
+        <div id="login-page" class="page hidden">
+            <div class="auth-container">
+                <form class="auth-form" id="login-form">
+                    <h2>Login</h2>
+                    <div class="form-group">
+                        <label for="login-username">Username or Email</label>
+                        <input type="text" id="login-username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="remember-me"> Remember me
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-block">Login</button>
+                    <div class="form-footer">
+                        <a href="#" id="forgot-password-link">Forgot password?</a>
+                    </div>
+                    <div class="form-footer">
+                        Don't have an account? <a href="#" id="go-to-signup">Sign up</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="signup-page" class="page hidden">
+            <div class="auth-container">
+                <form class="auth-form" id="signup-form">
+                    <h2>Sign Up</h2>
+                    <div class="form-group">
+                        <label for="signup-username">Username</label>
+                        <input type="text" id="signup-username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-email">Email</label>
+                        <input type="email" id="signup-email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <input type="password" id="signup-password" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password-confirm">Confirm Password</label>
+                        <input type="password" id="signup-password-confirm" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-block">Sign Up</button>
+                    <div class="form-footer">
+                        Already have an account? <a href="#" id="go-to-login">Login</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="forgot-password-page" class="page hidden">
+            <div class="auth-container">
+                <form class="auth-form" id="forgot-password-form">
+                    <h2>Reset Password</h2>
+                    <div class="form-group">
+                        <label for="reset-email">Email</label>
+                        <input type="email" id="reset-email" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-block">Send Reset Link</button>
+                    <div class="form-footer">
+                        <a href="#" id="back-to-login">Back to Login</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main Pages -->
+        <div id="home-page" class="page hidden">
+            <div class="main-content">
+                <div class="sidebar">
+                    <div class="card">
+                        <div class="card-header">Categories</div>
+                        <div class="card-body">
+                            <ul id="categories-list">
+                                <!-- Categories will be loaded here -->
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">Trending</div>
+                        <div class="card-body">
+                            <ul id="trending-list">
+                                <!-- Trending posts will be loaded here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="feed">
+                    <div class="card create-post">
+                        <div class="card-body">
+                            <textarea id="post-content" placeholder="What's on your mind?"></textarea>
+                            <div class="create-post-footer">
+                                <div>
+                                    <button class="btn" id="add-media-btn">Add Media</button>
+                                    <button class="btn" id="add-tags-btn">Add Tags</button>
+                                </div>
+                                <button class="btn" id="create-post-btn">Post</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="posts-container">
+                        <!-- Posts will be loaded here -->
+                    </div>
+                </div>
+                
+                <div class="right-sidebar">
+                    <div class="card">
+                        <div class="card-header">Who to Follow</div>
+                        <div class="card-body">
+                            <ul id="suggested-users">
+                                <!-- Suggested users will be loaded here -->
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">Online Friends</div>
+                        <div class="card-body">
+                            <ul id="online-friends">
+                                <!-- Online friends will be loaded here -->
+                            </ul>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
+        </div>
 
-        <footer class="footer">
-            <div class="container">
-                <p>&copy; 2024 Social Network. All rights reserved.</p>
+        <div id="profile-page" class="page hidden">
+            <div class="main-content">
+                <div class="feed">
+                    <div class="card profile-header">
+                        <div class="profile-avatar" id="profile-avatar">U</div>
+                        <div class="profile-info">
+                            <h2 id="profile-name">User Name</h2>
+                            <p id="profile-bio">Bio information</p>
+                            <div class="profile-stats">
+                                <div class="profile-stat">
+                                    <span id="profile-posts-count">0</span> Posts
+                                </div>
+                                <div class="profile-stat">
+                                    <span id="profile-followers-count">0</span> Followers
+                                </div>
+                                <div class="profile-stat">
+                                    <span id="profile-following-count">0</span> Following
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <button class="btn" id="edit-profile-btn">Edit Profile</button>
+                        </div>
+                    </div>
+                    
+                    <div id="user-posts-container">
+                        <!-- User posts will be loaded here -->
+                    </div>
+                </div>
             </div>
-        </footer>
+        </div>
+
+        <div id="messages-page" class="page hidden">
+            <div class="main-content">
+                <div class="sidebar">
+                    <div class="card">
+                        <div class="card-header">Conversations</div>
+                        <div class="card-body">
+                            <ul class="conversation-list" id="conversations-list">
+                                <!-- Conversations will be loaded here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="feed">
+                    <div class="card chat-container">
+                        <div class="card-header" id="chat-header">Select a conversation</div>
+                        <div class="chat-messages" id="chat-messages">
+                            <!-- Messages will be loaded here -->
+                        </div>
+                        <div class="chat-input">
+                            <input type="text" id="message-input" placeholder="Type a message...">
+                            <button class="btn" id="send-message-btn">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="notifications-page" class="page hidden">
+            <div class="main-content">
+                <div class="feed">
+                    <div class="card">
+                        <div class="card-header d-flex justify-between align-center">
+                            <span>Notifications</span>
+                            <button class="btn" id="mark-all-read-btn">Mark All as Read</button>
+                        </div>
+                        <div class="card-body">
+                            <ul class="notification-list" id="notifications-list">
+                                <!-- Notifications will be loaded here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="js/utils.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/posts.js"></script>
-    <script src="js/app.js"></script>
+    <script>
+        // API Configuration
+        const API_BASE = 'http://89.106.206.119:8000';
+        let currentUser = null;
+        let currentPage = 'home';
+        let currentConversationId = null;
+
+        // DOM Elements
+        const pages = document.querySelectorAll('.page');
+        const navLinks = document.querySelectorAll('.nav-link');
+        const loginLink = document.getElementById('login-link');
+        const signupLink = document.getElementById('signup-link');
+        const logoutLink = document.getElementById('logout-link');
+        const loginForm = document.getElementById('login-form');
+        const signupForm = document.getElementById('signup-form');
+        const forgotPasswordForm = document.getElementById('forgot-password-form');
+        const goToSignupLink = document.getElementById('go-to-signup');
+        const goToLoginLink = document.getElementById('go-to-login');
+        const forgotPasswordLink = document.getElementById('forgot-password-link');
+        const backToLoginLink = document.getElementById('back-to-login');
+        const createPostBtn = document.getElementById('create-post-btn');
+        const postContent = document.getElementById('post-content');
+        const postsContainer = document.getElementById('posts-container');
+        const conversationsList = document.getElementById('conversations-list');
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendMessageBtn = document.getElementById('send-message-btn');
+        const notificationsList = document.getElementById('notifications-list');
+        const markAllReadBtn = document.getElementById('mark-all-read-btn');
+        const userPostsContainer = document.getElementById('user-posts-container');
+        const editProfileBtn = document.getElementById('edit-profile-btn');
+
+        // Initialize the application
+        function init() {
+            // Check if user is already logged in
+            checkAuthStatus();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Load initial data if authenticated
+            if (currentUser) {
+                loadInitialData();
+            }
+        }
+
+        // Check authentication status
+        function checkAuthStatus() {
+            // In a real app, you would check for a token in localStorage
+            // For this demo, we'll just check if we have a currentUser
+            if (currentUser) {
+                showAuthenticatedUI();
+            } else {
+                showUnauthenticatedUI();
+            }
+        }
+
+        // Show UI for authenticated users
+        function showAuthenticatedUI() {
+            loginLink.classList.add('hidden');
+            signupLink.classList.add('hidden');
+            logoutLink.classList.remove('hidden');
+            showPage('home');
+        }
+
+        // Show UI for unauthenticated users
+        function showUnauthenticatedUI() {
+            loginLink.classList.remove('hidden');
+            signupLink.classList.remove('hidden');
+            logoutLink.classList.add('hidden');
+            showPage('login');
+        }
+
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Navigation
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const page = link.getAttribute('data-page');
+                    if (page) {
+                        showPage(page);
+                    }
+                });
+            });
+
+            // Authentication
+            loginForm.addEventListener('submit', handleLogin);
+            signupForm.addEventListener('submit', handleSignup);
+            forgotPasswordForm.addEventListener('submit', handleForgotPassword);
+            logoutLink.addEventListener('click', handleLogout);
+            
+            // Navigation between auth pages
+            goToSignupLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                showPage('signup');
+            });
+            
+            goToLoginLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                showPage('login');
+            });
+            
+            forgotPasswordLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                showPage('forgot-password');
+            });
+            
+            backToLoginLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                showPage('login');
+            });
+
+            // Posts
+            createPostBtn.addEventListener('click', createPost);
+
+            // Messages
+            sendMessageBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+
+            // Notifications
+            markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+
+            // Profile
+            editProfileBtn.addEventListener('click', editProfile);
+        }
+
+        // Show a specific page
+        function showPage(pageName) {
+            // Hide all pages
+            pages.forEach(page => {
+                page.classList.add('hidden');
+            });
+            
+            // Show the requested page
+            document.getElementById(`${pageName}-page`).classList.remove('hidden');
+            
+            // Update active nav link
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('data-page') === pageName) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // Load page-specific data
+            currentPage = pageName;
+            if (currentUser) {
+                switch(pageName) {
+                    case 'home':
+                        loadPosts();
+                        loadCategories();
+                        loadSuggestedUsers();
+                        break;
+                    case 'profile':
+                        loadUserProfile();
+                        loadUserPosts();
+                        break;
+                    case 'messages':
+                        loadConversations();
+                        break;
+                    case 'notifications':
+                        loadNotifications();
+                        break;
+                }
+            }
+        }
+
+        // Authentication handlers
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const remember = document.getElementById('remember-me').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/login/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username_or_email: username,
+                        password: password,
+                        remember: remember
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentUser = data.user;
+                    showAuthenticatedUI();
+                    loadInitialData();
+                } else {
+                    alert(`Login failed: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed. Please try again.');
+            }
+        }
+
+        async function handleSignup(e) {
+            e.preventDefault();
+            const username = document.getElementById('signup-username').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const passwordConfirm = document.getElementById('signup-password-confirm').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/signup/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        email: email,
+                        password: password,
+                        password_confirm: passwordConfirm
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Signup successful! Please check your email to verify your account.');
+                    showPage('login');
+                } else {
+                    alert(`Signup failed: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Signup error:', error);
+                alert('Signup failed. Please try again.');
+            }
+        }
+
+        async function handleForgotPassword(e) {
+            e.preventDefault();
+            const email = document.getElementById('reset-email').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/password-reset/request/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('If this email exists, a password reset link has been sent.');
+                    showPage('login');
+                } else {
+                    alert(`Password reset request failed: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Password reset error:', error);
+                alert('Password reset request failed. Please try again.');
+            }
+        }
+
+        async function handleLogout(e) {
+            e.preventDefault();
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/logout/`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentUser = null;
+                    showUnauthenticatedUI();
+                } else {
+                    alert(`Logout failed: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Still log the user out locally even if the request fails
+                currentUser = null;
+                showUnauthenticatedUI();
+            }
+        }
+
+        // Load initial data after login
+        function loadInitialData() {
+            loadPosts();
+            loadCategories();
+            loadSuggestedUsers();
+            loadNotifications();
+        }
+
+        // Posts
+        async function loadPosts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/posts/`);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderPosts(data.posts);
+                } else {
+                    console.error('Failed to load posts:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading posts:', error);
+            }
+        }
+
+        function renderPosts(posts) {
+            postsContainer.innerHTML = '';
+            
+            posts.forEach(post => {
+                const postElement = document.createElement('div');
+                postElement.className = 'card post';
+                postElement.innerHTML = `
+                    <div class="post-header">
+                        <div class="post-avatar">${post.author_info.username.charAt(0).toUpperCase()}</div>
+                        <div class="post-user-info">
+                            <h4>${post.author_info.first_name} ${post.author_info.last_name}</h4>
+                            <span>@${post.author_info.username} • ${formatDate(post.created_at)}</span>
+                        </div>
+                    </div>
+                    <div class="post-content">
+                        <p>${post.content}</p>
+                        ${post.media && post.media.length > 0 ? 
+                            `<div class="post-media">
+                                ${post.media.map(media => 
+                                    media.type === 'image' ? 
+                                        `<img src="${API_BASE}${media.url}" alt="Post image" style="max-width: 100%; border-radius: 8px; margin-top: 10px;">` :
+                                        media.type === 'video' ?
+                                            `<video controls style="max-width: 100%; border-radius: 8px; margin-top: 10px;">
+                                                <source src="${API_BASE}${media.url}" type="video/mp4">
+                                                Your browser does not support the video tag.
+                                            </video>` :
+                                            `<a href="${API_BASE}${media.url}" target="_blank">Download file</a>`
+                                ).join('')}
+                            </div>` : ''
+                        }
+                    </div>
+                    <div class="post-actions">
+                        <div class="post-action ${post.user_reaction === 'like' ? 'active' : ''}" data-post-id="${post.id}" data-action="like">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                            </svg>
+                            <span>${post.likes_count}</span>
+                        </div>
+                        <div class="post-action ${post.user_reaction === 'dislike' ? 'active' : ''}" data-post-id="${post.id}" data-action="dislike">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
+                            </svg>
+                            <span>${post.dislikes_count}</span>
+                        </div>
+                        <div class="post-action" data-post-id="${post.id}" data-action="comment">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <span>${post.comments_count}</span>
+                        </div>
+                        <div class="post-action" data-post-id="${post.id}" data-action="repost">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 1l4 4-4 4"></path>
+                                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                                <path d="M7 23l-4-4 4-4"></path>
+                                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                            </svg>
+                            <span>${post.reposts_count}</span>
+                        </div>
+                        <div class="post-action ${post.is_saved ? 'active' : ''}" data-post-id="${post.id}" data-action="save">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                `;
+                
+                postsContainer.appendChild(postElement);
+            });
+            
+            // Add event listeners to post actions
+            document.querySelectorAll('.post-action').forEach(action => {
+                action.addEventListener('click', handlePostAction);
+            });
+        }
+
+        async function createPost() {
+            const content = postContent.value.trim();
+            
+            if (!content) {
+                alert('Post content cannot be empty');
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('content', content);
+                formData.append('category', 'general'); // Default category
+                
+                const response = await fetch(`${API_BASE}/api/posts/`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    postContent.value = '';
+                    loadPosts(); // Reload posts to show the new one
+                } else {
+                    alert(`Failed to create post: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error creating post:', error);
+                alert('Failed to create post. Please try again.');
+            }
+        }
+
+        async function handlePostAction(e) {
+            const postId = e.currentTarget.getAttribute('data-post-id');
+            const action = e.currentTarget.getAttribute('data-action');
+            
+            if (!currentUser) {
+                alert('Please log in to perform this action');
+                return;
+            }
+            
+            try {
+                let endpoint = '';
+                let method = 'POST';
+                
+                switch(action) {
+                    case 'like':
+                        endpoint = `${API_BASE}/api/posts/${postId}/like/`;
+                        break;
+                    case 'dislike':
+                        endpoint = `${API_BASE}/api/posts/${postId}/dislike/`;
+                        break;
+                    case 'save':
+                        // Toggle save/unsave
+                        if (e.currentTarget.classList.contains('active')) {
+                            endpoint = `${API_BASE}/api/posts/${postId}/unsave/`;
+                        } else {
+                            endpoint = `${API_BASE}/api/posts/${postId}/save/`;
+                        }
+                        break;
+                    case 'repost':
+                        endpoint = `${API_BASE}/api/posts/${postId}/repost/`;
+                        break;
+                    case 'comment':
+                        // In a real app, you would show a comment form
+                        const comment = prompt('Enter your comment:');
+                        if (comment) {
+                            await fetch(`${API_BASE}/api/posts/${postId}/comment/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    content: comment
+                                })
+                            });
+                        }
+                        break;
+                }
+                
+                if (endpoint) {
+                    const response = await fetch(endpoint, { method });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Reload posts to update counts
+                        loadPosts();
+                    } else {
+                        console.error(`Failed to ${action} post:`, data.message);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error ${action}ing post:`, error);
+            }
+        }
+
+        // Categories
+        async function loadCategories() {
+            // In a real app, you would fetch categories from the API
+            // For now, we'll use a hardcoded list
+            const categories = [
+                'General',
+                'Technology',
+                'Sports',
+                'Entertainment',
+                'Science',
+                'Education'
+            ];
+            
+            const categoriesList = document.getElementById('categories-list');
+            categoriesList.innerHTML = '';
+            
+            categories.forEach(category => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" data-category="${category.toLowerCase()}">${category}</a>`;
+                categoriesList.appendChild(li);
+            });
+            
+            // Add event listeners to category links
+            categoriesList.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const category = e.target.getAttribute('data-category');
+                    loadPostsByCategory(category);
+                });
+            });
+        }
+
+        async function loadPostsByCategory(category) {
+            try {
+                const response = await fetch(`${API_BASE}/api/posts/category/${category}/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderPosts(data.posts);
+                } else {
+                    console.error('Failed to load posts by category:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading posts by category:', error);
+            }
+        }
+
+        // Suggested Users
+        async function loadSuggestedUsers() {
+            // In a real app, you would fetch suggested users from the API
+            // For now, we'll use a hardcoded list
+            const suggestedUsers = [
+                { username: 'user1', first_name: 'John', last_name: 'Doe' },
+                { username: 'user2', first_name: 'Jane', last_name: 'Smith' },
+                { username: 'user3', first_name: 'Bob', last_name: 'Johnson' }
+            ];
+            
+            const suggestedUsersList = document.getElementById('suggested-users');
+            suggestedUsersList.innerHTML = '';
+            
+            suggestedUsers.forEach(user => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.innerHTML = `
+                    <div class="conversation-avatar">${user.username.charAt(0).toUpperCase()}</div>
+                    <div class="conversation-info">
+                        <div class="conversation-name">${user.first_name} ${user.last_name}</div>
+                        <div class="conversation-last-message">@${user.username}</div>
+                    </div>
+                    <button class="btn" data-username="${user.username}">Follow</button>
+                `;
+                suggestedUsersList.appendChild(li);
+            });
+            
+            // Add event listeners to follow buttons
+            suggestedUsersList.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const username = e.target.getAttribute('data-username');
+                    followUser(username);
+                });
+            });
+        }
+
+        async function followUser(username) {
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${username}/follow/`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`You are now following ${username}`);
+                    loadSuggestedUsers(); // Reload to update the UI
+                } else {
+                    alert(`Failed to follow user: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error following user:', error);
+                alert('Failed to follow user. Please try again.');
+            }
+        }
+
+        // Profile
+        async function loadUserProfile() {
+            try {
+                const response = await fetch(`${API_BASE}/api/profile/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const user = data.user;
+                    document.getElementById('profile-avatar').textContent = user.username.charAt(0).toUpperCase();
+                    document.getElementById('profile-name').textContent = `${user.first_name} ${user.last_name}`;
+                    document.getElementById('profile-bio').textContent = user.bio || 'No bio yet';
+                    document.getElementById('profile-posts-count').textContent = user.posts_count;
+                    document.getElementById('profile-followers-count').textContent = user.followers_count;
+                    document.getElementById('profile-following-count').textContent = user.following_count;
+                } else {
+                    console.error('Failed to load user profile:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading user profile:', error);
+            }
+        }
+
+        async function loadUserPosts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${currentUser.username}/posts/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderUserPosts(data.posts);
+                } else {
+                    console.error('Failed to load user posts:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading user posts:', error);
+            }
+        }
+
+        function renderUserPosts(posts) {
+            userPostsContainer.innerHTML = '';
+            
+            if (posts.length === 0) {
+                userPostsContainer.innerHTML = '<p class="text-center">No posts yet.</p>';
+                return;
+            }
+            
+            posts.forEach(post => {
+                const postElement = document.createElement('div');
+                postElement.className = 'card post';
+                postElement.innerHTML = `
+                    <div class="post-content">
+                        <p>${post.content}</p>
+                        ${post.media && post.media.length > 0 ? 
+                            `<div class="post-media">
+                                ${post.media.map(media => 
+                                    media.type === 'image' ? 
+                                        `<img src="${API_BASE}${media.url}" alt="Post image" style="max-width: 100%; border-radius: 8px; margin-top: 10px;">` :
+                                        `<a href="${API_BASE}${media.url}" target="_blank">Download file</a>`
+                                ).join('')}
+                            </div>` : ''
+                        }
+                    </div>
+                    <div class="post-actions">
+                        <div class="post-action">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                            </svg>
+                            <span>${post.likes_count}</span>
+                        </div>
+                        <div class="post-action">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <span>${post.comments_count}</span>
+                        </div>
+                    </div>
+                `;
+                
+                userPostsContainer.appendChild(postElement);
+            });
+        }
+
+        function editProfile() {
+            // In a real app, you would show an edit profile form
+            alert('Edit profile functionality would be implemented here');
+        }
+
+        // Messages
+        async function loadConversations() {
+            try {
+                const response = await fetch(`${API_BASE}/api/conversations/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderConversations(data.conversations);
+                } else {
+                    console.error('Failed to load conversations:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+            }
+        }
+
+        function renderConversations(conversations) {
+            conversationsList.innerHTML = '';
+            
+            if (conversations.length === 0) {
+                conversationsList.innerHTML = '<p class="text-center">No conversations yet.</p>';
+                return;
+            }
+            
+            conversations.forEach(conversation => {
+                const conversationElement = document.createElement('li');
+                conversationElement.className = 'conversation-item';
+                conversationElement.setAttribute('data-conversation-id', conversation.id);
+                conversationElement.innerHTML = `
+                    <div class="conversation-avatar">${conversation.other_user.username.charAt(0).toUpperCase()}</div>
+                    <div class="conversation-info">
+                        <div class="conversation-name">${conversation.other_user.first_name} ${conversation.other_user.last_name}</div>
+                        <div class="conversation-last-message">${conversation.last_message.content}</div>
+                    </div>
+                    <div class="conversation-time">${formatTime(conversation.last_message.created_at)}</div>
+                `;
+                
+                conversationsList.appendChild(conversationElement);
+            });
+            
+            // Add event listeners to conversation items
+            conversationsList.querySelectorAll('.conversation-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const conversationId = e.currentTarget.getAttribute('data-conversation-id');
+                    loadConversation(conversationId);
+                });
+            });
+        }
+
+        async function loadConversation(conversationId) {
+            currentConversationId = conversationId;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderMessages(data.messages);
+                    document.getElementById('chat-header').textContent = `Chat with ${data.conversation.other_user.username}`;
+                } else {
+                    console.error('Failed to load conversation:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+            }
+        }
+
+        function renderMessages(messages) {
+            chatMessages.innerHTML = '';
+            
+            if (messages.length === 0) {
+                chatMessages.innerHTML = '<p class="text-center">No messages yet. Start the conversation!</p>';
+                return;
+            }
+            
+            messages.forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `message ${message.sender.username === currentUser.username ? 'sent' : 'received'}`;
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.content}</div>
+                    <div class="message-time">${formatTime(message.created_at)}</div>
+                `;
+                
+                chatMessages.appendChild(messageElement);
+            });
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const content = messageInput.value.trim();
+            
+            if (!content || !currentConversationId) {
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('content', content);
+                
+                const response = await fetch(`${API_BASE}/api/conversations/${currentConversationId}/send/`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    messageInput.value = '';
+                    loadConversation(currentConversationId); // Reload messages
+                } else {
+                    alert(`Failed to send message: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Failed to send message. Please try again.');
+            }
+        }
+
+        // Notifications
+        async function loadNotifications() {
+            try {
+                const response = await fetch(`${API_BASE}/api/notifications/`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderNotifications(data.notifications);
+                } else {
+                    console.error('Failed to load notifications:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        function renderNotifications(notifications) {
+            notificationsList.innerHTML = '';
+            
+            if (notifications.length === 0) {
+                notificationsList.innerHTML = '<p class="text-center">No notifications yet.</p>';
+                return;
+            }
+            
+            notifications.forEach(notification => {
+                const notificationElement = document.createElement('li');
+                notificationElement.className = `notification-item ${notification.is_read ? '' : 'unread'}`;
+                notificationElement.innerHTML = `
+                    <div class="notification-avatar">${notification.sender_info.username.charAt(0).toUpperCase()}</div>
+                    <div class="notification-content">
+                        <div>${notification.message}</div>
+                        <div class="notification-time">${formatTime(notification.created_at)}</div>
+                    </div>
+                `;
+                
+                notificationsList.appendChild(notificationElement);
+            });
+        }
+
+        async function markAllNotificationsAsRead() {
+            try {
+                const response = await fetch(`${API_BASE}/api/notifications/mark-read/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ids: [] // Empty array means mark all as read
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadNotifications(); // Reload notifications
+                } else {
+                    alert(`Failed to mark notifications as read: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error marking notifications as read:', error);
+                alert('Failed to mark notifications as read. Please try again.');
+            }
+        }
+
+        // Utility functions
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+
+        function formatTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
 </body>
 </html>
