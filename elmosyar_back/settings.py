@@ -106,7 +106,7 @@ TEMPLATES = [
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME":"db.sqlite3",
     }
 }
 
@@ -126,16 +126,16 @@ USE_TZ = True
 
 # Static & Media files
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = "staticfiles"
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = "media"
 
 # Default primary key
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom user model
-AUTH_USER_MODEL = "core.User"  # تغییر داده شده
+AUTH_USER_MODEL = "core.User"
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -168,7 +168,6 @@ CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
 CSRF_COOKIE_SECURE = False
 
-# در حالت development همه origins رو برای CSRF قبول کن
 if DEBUG:
     CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*', 'http://localhost:3000', 'http://127.0.0.1:3000']
 else:

@@ -1,6 +1,7 @@
-#db.sqlite3
-#__pycache__/
-#staticfiles/
-#.env
-#venv/
+#elmosyar_back/__pycache__/
+#elmosyar_back/db.sqlite3
+#elmosyar_back/staticfiles/
+#elmosyar_back/media/
+#elmosyar_back/.env
+#elmosyar_back/venv/
 #*.log
