@@ -22,7 +22,6 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # فیچرهای جدید: سیستم فالو - با through table مشخص
     followers = models.ManyToManyField(
         'self', 
         symmetrical=False, 
@@ -104,7 +103,6 @@ class User(AbstractUser):
         return self.posts.count()
 
 
-# مدل واسط برای رابطه فالو
 class UserFollow(models.Model):
     follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name='follow_relations')
     following = models.ForeignKey(User, on_delete=models.CASCADE, related_name='follower_relations')
