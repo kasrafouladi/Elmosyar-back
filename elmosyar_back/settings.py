@@ -84,6 +84,7 @@ MIDDLEWARE = [
 # URLs
 ROOT_URLCONF = "urls"
 WSGI_APPLICATION = "wsgi.application"
+FRONTEND_URL = "http://89.106.206.119:3000"
 
 # Templates (only for admin panel)
 TEMPLATES = [

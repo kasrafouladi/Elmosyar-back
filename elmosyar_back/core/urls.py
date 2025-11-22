@@ -6,8 +6,12 @@ urlpatterns = [
     
     # Authentication
     path('signup/', views.signup, name='signup'),
-    path('login/', views.login_user, name='login'),
-    path('logout/', views.logout_user, name='logout'),
+    path('login/', views.Login.as_view(), name='login'),
+    path('logout/', views.Logout.as_view(), name='logout'),
+
+    path('token/verify/', views.VerifyTokenView.as_view(), name='token_verify'),
+    path('token/refresh/', views.RefreshTokenView.as_view(), name='token_refresh'),
+
     path('verify-email/<str:token>/', views.verify_email, name='verify_email'),
     path('password-reset/request/', views.request_password_reset, name='request_password_reset'),
     path('password-reset/<str:token>/', views.reset_password, name='reset_password'),
@@ -16,8 +20,8 @@ urlpatterns = [
     path('profile/', views.get_profile, name='get_profile'),
     path('profile/update/', views.update_profile, name='update_profile'),
     path('profile/update-picture/', views.update_profile_picture, name='update_profile_picture'),
-    path('users/<str:username>/profile/', views.get_user_profile, name='get_user_profile'),
     path('profile/delete-picture/', views.delete_profile_picture, name='delete_profile_picture'),
+    path('users/<str:username>/profile/', views.get_user_profile, name='get_user_profile'),
     
     # Social (Follow system)
     path('users/<str:username>/follow/', views.follow_user, name='follow_user'),
@@ -35,13 +39,12 @@ urlpatterns = [
     path('posts/<int:post_id>/thread/', views.post_thread, name='post_thread'),
     path('posts/<int:post_id>/save/', views.save_post, name='save_post'),
     path('posts/<int:post_id>/unsave/', views.unsave_post, name='unsave_post'),
-    path('posts/category/<str:category_id>/', views.posts_by_category, name='posts_by_category'),
-    path('posts/saved/', views.saved_posts, name='saved_posts'),
     path('posts/<int:post_id>/delete/', views.delete_post, name='delete_post'),
     path('posts/<int:post_id>/update/', views.update_post, name='update_post'),
+    path('posts/category/<str:category_id>/', views.posts_by_category, name='posts_by_category'),
+    path('posts/saved/', views.saved_posts, name='saved_posts'),
     
     # Comments
-    path('posts/<int:post_id>/comment/', views.post_comment, name='post_comment'),
     path('comments/<int:comment_id>/like/', views.like_comment, name='like_comment'),
     path('comments/<int:comment_id>/delete/', views.delete_comment, name='delete_comment'),
     path('comments/<int:comment_id>/update/', views.update_comment, name='update_comment'),

@@ -1,189 +1,102 @@
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import get_object_or_404
-from django.contrib.auth import authenticate, login, logout
+import logging
+from django.shortcuts import render, get_object_or_404
+from django.contrib.auth import authenticate
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.exceptions import TokenError
+from datetime import timedelta
+from django.db import transaction
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.conf import settings
 from django.db.models import Q, Count, F
 from django.core.paginator import Paginator
-from django.db import transaction
 import json
-from datetime import timedelta
 import mimetypes
+import os
 
-from .models import User, Post, PostMedia, Comment, Notification, Reaction, Conversation, Message
+from .models import User, Post, PostMedia, Comment, Notification, Reaction, Conversation, Message, UserFollow
+from .serializers import (
+    UserSerializer, SignUpSerializer, LoginSerializer, PostSerializer, 
+    CommentSerializer, NotificationSerializer, ConversationSerializer, 
+    MessageSerializer, PostMediaSerializer
+)
 
+# Constants
+MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_MEDIA_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_POST_CONTENT_LENGTH = 5000
+MAX_COMMENT_CONTENT_LENGTH = 1000
+MAX_MESSAGE_CONTENT_LENGTH = 2000
 
-AUTH_URL = "http://89.106.206.119:3000" #it is also front's url
+logger = logging.getLogger(__name__)
 
 # ════════════════════════════════════════════════════════════
-# 🔧 Helper Functions
+# Tokens
 # ════════════════════════════════════════════════════════════
 
-
-def serialize_user(user, include_sensitive=False, current_user=None):
-    """سریالایز کردن اطلاعات کاربر"""
-    try:
-        profile_picture_url = user.profile_picture.url if user.profile_picture else None
-    except:
-        profile_picture_url = None
+class VerifyTokenView(APIView):
+    permission_classes = [AllowAny]
     
-    data = {
-        'id': user.id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'profile_picture': profile_picture_url,
-        'bio': user.bio,
-        'student_id': user.student_id,
-        'followers_count': user.followers_count,
-        'following_count': user.following_count,
-        'posts_count': user.posts_count,
-    }
-    
-    if include_sensitive:
-        data.update({
-            'email': user.email,
-            'is_email_verified': user.is_email_verified,
-            'created_at': user.created_at.isoformat(),
-        })
-    
-    # اضافه کردن وضعیت فالو برای کاربر جاری
-    if current_user and current_user.is_authenticated:
-        data['is_following'] = current_user.following.filter(id=user.id).exists()
-        data['is_me'] = current_user.id == user.id
-    
-    return data
+    def post(self, request):
+        token = request.data.get('token') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        
+        if not token:
+            return Response({
+                'success': False,
+                'message': 'Token is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            AccessToken(token)
+            return Response({
+                'success': True,
+                'message': 'Token is valid'
+            }, status=status.HTTP_200_OK)
+        except TokenError as e:
+            logger.warning(f"Token validation failed: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Token is invalid or expired'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-
-def serialize_post(post, include_user_info=True, current_user=None):
-    """سریالایز کردن اطلاعات پست"""
-    # پیش‌بارگذاری مدیاها
-    media_list = []
-    for m in post.media.all().only('id', 'file', 'media_type', 'caption'):
-        media_list.append({
-            'id': m.id,
-            'url': m.file.url if m.file else '',
-            'type': m.media_type,
-            'caption': m.caption,
-        })
+class RefreshTokenView(APIView):
+    permission_classes = [AllowAny]
     
-    # پیش‌بارگذاری منشن‌ها
-    mentions_list = []
-    for u in post.mentions.all().only('id', 'username', 'first_name', 'last_name', 'profile_picture'):
-        mentions_list.append(serialize_user(u))
-    
-    data = {
-        'id': post.id,
-        'author': post.author.username,
-        'content': post.content,
-        'created_at': post.created_at.isoformat(),
-        'updated_at': post.updated_at.isoformat(),
-        'tags': [t.strip() for t in post.tags.split(',')] if post.tags else [],
-        'mentions': mentions_list,
-        'media': media_list,
-        'likes_count': post.likes_count,
-        'dislikes_count': post.dislikes_count,
-        'comments_count': post.comments_count,
-        'reposts_count': post.reposts.count(),
-        'replies_count': post.replies.count(),
-        'is_repost': post.is_repost,
-        'original_post_id': post.original_post.id if post.original_post else None,
-        'parent_id': post.parent.id if post.parent else None,
-        'category': post.category or '',
-    }
-    
-    if include_user_info:
-        data['author_info'] = serialize_user(post.author, include_sensitive=False, current_user=current_user)
-    
-    # اضافه کردن وضعیت ری‌اکشن کاربر جاری با بررسی وجود
-    if current_user and current_user.is_authenticated:
-        user_reaction = post.reactions.filter(user=current_user).first()
-        data['user_reaction'] = user_reaction.reaction if user_reaction else None
-        data['is_saved'] = post.saved_by.filter(id=current_user.id).exists()
-    
-    return data
-
-
-def serialize_comment(comment, current_user=None):
-    """سریالایز کردن اطلاعات کامنت"""
-    data = {
-        'id': comment.id,
-        'user': comment.user.username,
-        'user_info': serialize_user(comment.user, include_sensitive=False, current_user=current_user),
-        'content': comment.content,
-        'created_at': comment.created_at.isoformat(),
-        'parent_id': comment.parent.id if comment.parent else None,
-        'likes_count': comment.likes_count,
-        'replies_count': comment.replies_count,
-    }
-    
-    if current_user and current_user.is_authenticated:
-        data['is_liked'] = comment.likes.filter(id=current_user.id).exists()
-    
-    return data
-
-
-def serialize_notification(notification):
-    """سریالایز کردن اطلاعات نوتیفیکیشن"""
-    return {
-        'id': notification.id,
-        'sender': notification.sender.username,
-        'sender_info': serialize_user(notification.sender, include_sensitive=False),
-        'type': notification.notif_type,
-        'post_id': notification.post.id if notification.post else None,
-        'comment_id': notification.comment.id if notification.comment else None,
-        'message': notification.message,
-        'is_read': notification.is_read,
-        'created_at': notification.created_at.isoformat(),
-    }
-
-
-def serialize_conversation(conversation, current_user):
-    """سریالایز کردن اطلاعات مکالمه"""
-    other_user = conversation.participants.exclude(id=current_user.id).first()
-    last_message = conversation.messages.last()
-    
-    return {
-        'id': conversation.id,
-        'other_user': serialize_user(other_user, include_sensitive=False) if other_user else None,
-        'last_message': {
-            'content': last_message.content[:100] + '...' if last_message and len(last_message.content) > 100 else last_message.content if last_message else '',
-            'sender': last_message.sender.username if last_message else '',
-            'created_at': last_message.created_at.isoformat() if last_message else None,
-            'is_read': last_message.is_read if last_message else True,
-        } if last_message else None,
-        'unread_count': conversation.messages.filter(is_read=False).exclude(sender=current_user).count(),
-        'updated_at': conversation.updated_at.isoformat(),
-    }
-
-
-def serialize_message(message):
-    """سریالایز کردن اطلاعات پیام"""
-    return {
-        'id': message.id,
-        'sender': serialize_user(message.sender, include_sensitive=False),
-        'content': message.content,
-        'image': message.image.url if message.image else None,
-        'file': {
-            'url': message.file.url if message.file else None,
-            'name': message.file.name.split('/')[-1] if message.file else None,
-        } if message.file else None,
-        'is_read': message.is_read,
-        'created_at': message.created_at.isoformat(),
-    }
-
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({
+                'success': False,
+                'message': 'Refresh token is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            refresh = RefreshToken(refresh_token)
+            return Response({
+                'success': True,
+                'access': str(refresh.access_token)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Token refresh failed: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Invalid refresh token'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 # ════════════════════════════════════════════════════════════
 # 🏠 Basic Endpoint
 # ════════════════════════════════════════════════════════════
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def index(request):
     """API root endpoint"""
-    return JsonResponse({
+    return Response({
         'success': True,
         'message': 'API is running',
         'endpoints': {
@@ -234,106 +147,130 @@ def index(request):
         }
     })
 
-
 # ════════════════════════════════════════════════════════════
 # 🔐 Authentication Endpoints
 # ════════════════════════════════════════════════════════════
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def signup(request):
     """Register a new user"""
-    try:
+    serializer = SignUpSerializer(data=request.data)
+    if serializer.is_valid():
         with transaction.atomic():
-            data = json.loads(request.body)
-            username = data.get('username', '').strip()
-            email = data.get('email', '').strip()
-            password = data.get('password', '')
-            password_confirm = data.get('password_confirm', '')
-
-            # Validation
-            if not all([username, email, password, password_confirm]):
-                return JsonResponse({
-                    'success': False,
-                    'message': 'All fields are required'
-                }, status=400)
-
-            if len(username) < 3 or len(username) > 30:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Username must be between 3 and 30 characters'
-                }, status=400)
-
-            if password != password_confirm:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Passwords do not match'
-                }, status=400)
-
-            if len(password) < 8:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Password must be at least 8 characters'
-                }, status=400)
-
-            if User.objects.filter(username=username).exists():
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Username already exists'
-                }, status=400)
-
-            if User.objects.filter(email=email).exists():
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Email already exists'
-                }, status=400)
-
-            # Create user
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                is_active=False
-            )
-
+            user = serializer.save()
+            
             # Send verification email
             verification_token = user.generate_email_verification_token()
-            user.email_verification_sent_at = timezone.now()
-            user.save()
-
-            verification_link = f"{AUTH_URL}/verify-email/{verification_token}/"
+            verification_link = f"{settings.FRONTEND_URL}/verify-email/{verification_token}/"
             
             try:
                 send_mail(
                     'Email Verification',
                     f'Click this link to verify your email: {verification_link}',
-                    settings.DEFAULT_FROM_EMAIL or 'noreply@example.com',
+                    settings.DEFAULT_FROM_EMAIL,
                     [user.email],
                     fail_silently=False,
                 )
             except Exception as e:
-                print(f"Email sending failed: {e}")
+                logger.error(f"Email sending failed: {str(e)}")
 
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Signup successful. Please check your email to verify your account.',
-                'user': serialize_user(user, include_sensitive=True)
-            }, status=201)
-
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
+                'user': UserSerializer(user, context={'request': request}).data
+            }, status=status.HTTP_201_CREATED)
+    
+    return Response({
+        'success': False,
+        'message': 'Validation failed',
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 
-@csrf_exempt
-@require_http_methods(["GET"])
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'message': 'Validation failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        username_or_email = serializer.validated_data['username_or_email']
+        password = serializer.validated_data['password']
+        remember_me = serializer.validated_data.get('rememberMe', False)
+        
+        # Find user by username or email
+        user = User.objects.filter(
+            Q(email=username_or_email) | Q(username=username_or_email)
+        ).first()
+
+        if user and user.check_password(password):
+            if not user.is_active:
+                return Response({
+                    'success': False,
+                    'message': 'Account is not active'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if not user.is_email_verified:
+                return Response({
+                    'success': False,
+                    'message': 'Please verify your email first'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            if remember_me:
+                refresh.set_exp(lifetime=timedelta(days=7))
+            
+            return Response({
+                'success': True,
+                'message': 'Login successful',
+                'user': UserSerializer(user, context={'request': request}).data,
+                'tokens': {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'success': False,
+                'message': 'Invalid credentials'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response({
+                'success': False,
+                'message': 'Refresh token is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({
+                'success': True,
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Logout failed: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Invalid token'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def verify_email(request, token):
     """Verify user email"""
     try:
@@ -341,437 +278,300 @@ def verify_email(request, token):
             user = get_object_or_404(User, email_verification_token=token)
             
             if user.is_email_verified:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Email is already verified'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             if not user.is_email_verification_token_valid():
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Verification token has expired'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             user.verify_email()
             user.is_active = True
             user.save()
             
-            # لاگین کردن کاربر بعد از تأیید ایمیل
-            try:
-                login(request, user)
-            except Exception:
-                pass  # اگر لاگین شکست خورد، ادامه بده
+            # Generate tokens for auto-login
+            refresh = RefreshToken.for_user(user)
             
-            return JsonResponse({
+            return Response({
                 'success': True,
-                'message': 'Email verified successfully. You are now logged in.',
-                'user': serialize_user(user, include_sensitive=True)
-            })
+                'message': 'Email verified successfully',
+                'user': UserSerializer(user, context={'request': request}).data,
+                'tokens': {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Email verification failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Verification failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def login_user(request):
-    """User login"""
-    try:
-        data = json.loads(request.body)
-        username_or_email = data.get('username_or_email', '').strip()
-        password = data.get('password', '')
-        remember = data.get('remember', False)
-
-        if not all([username_or_email, password]):
-            return JsonResponse({
-                'success': False,
-                'message': 'Username/Email and password are required'
-            }, status=400)
-
-        # Find user
-        user = User.objects.filter(email=username_or_email).first() or \
-               User.objects.filter(username=username_or_email).first()
-
-        if user and user.check_password(password):
-            if not user.is_active:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Please verify your email first'
-                }, status=400)
-
-            login(request, user)
-            
-            # Set session expiry
-            if remember:
-                request.session.set_expiry(60 * 60 * 24 * 30)  # 30 days
-            else:
-                request.session.set_expiry(0)  # Browser close
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Login successful',
-                'user': serialize_user(user, include_sensitive=True)
-            })
-        else:
-            return JsonResponse({
-                'success': False,
-                'message': 'Invalid credentials'
-            }, status=401)
-
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def logout_user(request):
-    """User logout"""
-    logout(request)
-    return JsonResponse({
-        'success': True,
-        'message': 'Logout successful'
-    })
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def request_password_reset(request):
     """Request password reset"""
-    try:
-        data = json.loads(request.body)
-        email = data.get('email', '').strip()
+    email = request.data.get('email', '').strip()
 
-        if not email:
-            return JsonResponse({
-                'success': False,
-                'message': 'Email is required'
-            }, status=400)
-
-        user = User.objects.filter(email=email).first()
-
-        if user:
-            reset_token = user.generate_password_reset_token()
-            user.password_reset_sent_at = timezone.now()
-            user.save()
-
-            reset_link = f"{AUTH_URL}/password-reset/{reset_token}/"
-            
-            try:
-                send_mail(
-                    'Password Reset Request',
-                    f'Click this link to reset your password: {reset_link}',
-                    settings.DEFAULT_FROM_EMAIL or 'noreply@example.com',
-                    [user.email],
-                    fail_silently=False,
-                )
-            except Exception as e:
-                print(f"Email sending failed: {e}")
-
-        # همیشه همین پیام را برگردان، حتی اگر ایمیل وجود نداشته باشد
-        return JsonResponse({
-            'success': True,
-            'message': 'If this email exists in our system, a password reset link has been sent'
-        })
-
-    except json.JSONDecodeError:
-        return JsonResponse({
+    if not email:
+        return Response({
             'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Email is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.filter(email=email).first()
+
+    if user:
+        reset_token = user.generate_password_reset_token()
+        reset_link = f"{settings.FRONTEND_URL}/password-reset/{reset_token}/"
+        
+        try:
+            send_mail(
+                'Password Reset Request',
+                f'Click this link to reset your password: {reset_link}',
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            logger.error(f"Password reset email failed: {str(e)}")
+
+    # Always return same message for security
+    return Response({
+        'success': True,
+        'message': 'If this email exists in our system, a password reset link has been sent'
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def reset_password(request, token):
     """Reset password with token"""
     try:
         with transaction.atomic():
             user = get_object_or_404(User, password_reset_token=token)
 
-            token_age = timezone.now() - user.password_reset_sent_at
-            if token_age > timedelta(hours=1):
-                return JsonResponse({
+            if not user.is_password_reset_token_valid():
+                return Response({
                     'success': False,
                     'message': 'Password reset token has expired'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            data = json.loads(request.body)
-            password = data.get('password', '')
-            password_confirm = data.get('password_confirm', '')
+            password = request.data.get('password', '')
+            password_confirm = request.data.get('password_confirm', '')
 
             if not all([password, password_confirm]):
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Password and confirmation are required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if password != password_confirm:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Passwords do not match'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             if len(password) < 8:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Password must be at least 8 characters'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             user.set_password(password)
             user.password_reset_token = None
             user.password_reset_sent_at = None
             user.save()
 
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Password reset successfully. You can now login.'
-            })
+            }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Password reset failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Password reset failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ════════════════════════════════════════════════════════════
 # 👤 Profile Endpoints
 # ════════════════════════════════════════════════════════════
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_profile(request):
     """Get current user profile"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'User not authenticated'
-        }, status=401)
-
-    return JsonResponse({
+    serializer = UserSerializer(request.user, context={'request': request})
+    return Response({
         'success': True,
-        'user': serialize_user(request.user, include_sensitive=True, current_user=request.user)
-    })
+        'user': serializer.data
+    }, status=status.HTTP_200_OK)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def get_user_profile(request, username):
     """Get any user's public profile"""
     user = get_object_or_404(User, username=username)
     
-    # اگر کاربر جاری باشد، اطلاعات حساس شامل شود
+    # Include sensitive info only for own profile
     include_sensitive = request.user.is_authenticated and request.user.id == user.id
     
-    return JsonResponse({
+    serializer = UserSerializer(user, context={'request': request})
+    data = serializer.data
+    
+    if not include_sensitive:
+        data.pop('email', None)
+    
+    return Response({
         'success': True,
-        'user': serialize_user(user, include_sensitive=include_sensitive, current_user=request.user)
-    })
+        'user': data
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["PUT", "POST", "PATCH"])
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_profile(request):
     """Update user profile"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'User not authenticated'
-        }, status=401)
-
-    try:
+    user = request.user
+    serializer = UserSerializer(user, data=request.data, partial=True, context={'request': request})
+    
+    if serializer.is_valid():
         with transaction.atomic():
-            data = json.loads(request.body)
-            user = request.user
-
-            # Update allowed fields with validation
-            allowed_fields = {
-                'first_name': {'max_length': 150},
-                'last_name': {'max_length': 150},
-                'student_id': {'max_length': 20},
-                'bio': {'max_length': 500}
-            }
-            
-            for field, constraints in allowed_fields.items():
-                if field in data:
-                    value = data[field]
-                    if len(str(value)) > constraints['max_length']:
-                        return JsonResponse({
-                            'success': False,
-                            'message': f'{field} is too long (max {constraints["max_length"]} characters)'
-                        }, status=400)
-                    setattr(user, field, value)
-
-            user.save()
-
-            return JsonResponse({
+            serializer.save()
+            return Response({
                 'success': True,
                 'message': 'Profile updated successfully',
-                'user': serialize_user(user, include_sensitive=True, current_user=request.user)
-            })
-
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
+                'user': serializer.data
+            }, status=status.HTTP_200_OK)
+    
+    return Response({
+        'success': False,
+        'message': 'Validation failed',
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 
-@csrf_exempt
-@require_http_methods(["DELETE", "POST"])
-def delete_profile_picture(request):
-    """Delete profile picture"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_profile_picture(request):
+    """Update profile picture"""
+    if 'profile_picture' not in request.FILES:
+        return Response({
             'success': False,
-            'message': 'User not authenticated'
-        }, status=401)
+            'message': 'No image file provided'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    profile_picture = request.FILES['profile_picture']
+    user = request.user
+
+    # Validate file type
+    if not profile_picture.content_type.startswith('image/'):
+        return Response({
+            'success': False,
+            'message': 'Only image files are allowed'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate file size
+    if profile_picture.size > MAX_PROFILE_PICTURE_SIZE:
+        return Response({
+            'success': False,
+            'message': f'Image file is too large (max {MAX_PROFILE_PICTURE_SIZE // (1024*1024)}MB)'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():
-            user = request.user
+            old_picture_path = user.profile_picture.path if user.profile_picture else None
+            
+            user.profile_picture = profile_picture
+            user.save()
+            
+            # Delete old picture file
+            if old_picture_path and os.path.isfile(old_picture_path):
+                os.remove(old_picture_path)
+            
+            return Response({
+                'success': True,
+                'message': 'Profile picture updated successfully',
+                'profile_picture': user.profile_picture.url
+            }, status=status.HTTP_200_OK)
 
-            if not user.profile_picture:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'No profile picture to delete'
-                }, status=400)
+    except Exception as e:
+        logger.error(f"Profile picture update failed: {str(e)}")
+        return Response({
+            'success': False,
+            'message': 'Failed to update profile picture'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # Delete old picture
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_profile_picture(request):
+    """Delete profile picture"""
+    user = request.user
+
+    if not user.profile_picture:
+        return Response({
+            'success': False,
+            'message': 'No profile picture to delete'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
             user.profile_picture.delete(save=False)
             user.profile_picture = None
             user.save()
 
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Profile picture deleted successfully'
-            })
+            }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Profile picture deletion failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def update_profile_picture(request):
-    """Update profile picture"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'User not authenticated'
-        }, status=401)
-
-    try:
-        # ابتدا فایل جدید را اعتبارسنجی می‌کنیم
-        if 'profile_picture' not in request.FILES:
-            return JsonResponse({
-                'success': False,
-                'message': 'No image file provided'
-            }, status=400)
-
-        profile_picture = request.FILES['profile_picture']
-        user = request.user
-
-        # بررسی نوع فایل
-        if not profile_picture.content_type.startswith('image/'):
-            return JsonResponse({
-                'success': False,
-                'message': 'Only image files are allowed'
-            }, status=400)
-
-        # بررسی سایز فایل (حداکثر 5MB)
-        if profile_picture.size > 5 * 1024 * 1024:
-            return JsonResponse({
-                'success': False,
-                'message': 'Image file is too large (max 5MB)'
-            }, status=400)
-
-        with transaction.atomic():
-            # ذخیره مسیر فایل قدیمی برای پشتیبان‌گیری
-            old_picture_path = user.profile_picture.path if user.profile_picture else None
-            
-            try:
-                user.profile_picture = profile_picture
-                user.save()
-                
-                # اگر آپلود موفق بود، فایل قدیمی را حذف کن
-                if old_picture_path:
-                    import os
-                    if os.path.isfile(old_picture_path):
-                        os.remove(old_picture_path)
-                        
-            except Exception:
-                # اگر خطا رخ داد، تغییرات را rollback کن
-                if old_picture_path and user.profile_picture:
-                    user.profile_picture = old_picture_path
-                    user.save()
-                raise
-
-            return JsonResponse({
-                'success': True,
-                'message': 'Profile picture updated successfully',
-                'profile_picture': user.profile_picture.url if user.profile_picture else None
-            })
-
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to delete profile picture'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ════════════════════════════════════════════════════════════
 # 🤝 Social Endpoints
 # ════════════════════════════════════════════════════════════
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def follow_user(request, username):
     """Follow a user"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             user_to_follow = get_object_or_404(User, username=username)
             
             if user_to_follow == request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You cannot follow yourself'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             if request.user.following.filter(id=user_to_follow.id).exists():
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': f'You are already following {username}'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            # استفاده از F() برای جلوگیری از race condition
+            # Create follow relationship
+            UserFollow.objects.create(follower=request.user, following=user_to_follow)
+            
+            # Update counts using F() to prevent race condition
             User.objects.filter(id=request.user.id).update(
                 following_count=F('following_count') + 1
             )
@@ -779,9 +579,7 @@ def follow_user(request, username):
                 followers_count=F('followers_count') + 1
             )
             
-            request.user.following.add(user_to_follow)
-            
-            # ایجاد نوتیفیکیشن
+            # Create notification
             Notification.objects.create(
                 recipient=user_to_follow,
                 sender=request.user,
@@ -789,43 +587,45 @@ def follow_user(request, username):
                 message=f'{request.user.username} started following you'
             )
             
-            # بازخوانی کاربر برای گرفتن مقادیر به‌روز شده
+            # Refresh user to get updated counts
             user_to_follow.refresh_from_db()
             
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': f'You are now following {username}',
                 'followers_count': user_to_follow.followers_count
-            })
+            }, status=status.HTTP_200_OK)
             
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Follow operation failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Follow operation failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def unfollow_user(request, username):
     """Unfollow a user"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             user_to_unfollow = get_object_or_404(User, username=username)
             
-            if not request.user.following.filter(id=user_to_unfollow.id).exists():
-                return JsonResponse({
+            follow_relation = UserFollow.objects.filter(
+                follower=request.user, 
+                following=user_to_unfollow
+            ).first()
+            
+            if not follow_relation:
+                return Response({
                     'success': False,
                     'message': f'You are not following {username}'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            # استفاده از F() برای جلوگیری از race condition
+            follow_relation.delete()
+            
+            # Update counts using F() to prevent race condition
             User.objects.filter(id=request.user.id).update(
                 following_count=F('following_count') - 1
             )
@@ -833,33 +633,33 @@ def unfollow_user(request, username):
                 followers_count=F('followers_count') - 1
             )
             
-            request.user.following.remove(user_to_unfollow)
-            
-            # بازخوانی کاربر برای گرفتن مقادیر به‌روز شده
+            # Refresh user to get updated counts
             user_to_unfollow.refresh_from_db()
             
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': f'You have unfollowed {username}',
                 'followers_count': user_to_unfollow.followers_count
-            })
+            }, status=status.HTTP_200_OK)
             
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Unfollow operation failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Unfollow operation failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def user_followers(request, username):
-    """Get user's followers"""
+    """Get user's followers with pagination"""
     user = get_object_or_404(User, username=username)
     
     page = int(request.GET.get('page', 1))
     per_page = min(int(request.GET.get('per_page', 50)), 100)
     
-    followers = user.followers.all()
+    followers = user.followers.select_related('follower')
     paginator = Paginator(followers, per_page)
     
     try:
@@ -867,9 +667,13 @@ def user_followers(request, username):
     except:
         followers_page = paginator.page(1)
     
-    return JsonResponse({
+    # Extract user objects from follow relationships
+    follower_users = [follow.follower for follow in followers_page]
+    serializer = UserSerializer(follower_users, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'followers': [serialize_user(f, current_user=request.user) for f in followers_page],
+        'followers': serializer.data,
         'pagination': {
             'page': page,
             'per_page': per_page,
@@ -878,18 +682,19 @@ def user_followers(request, username):
             'has_next': followers_page.has_next(),
             'has_previous': followers_page.has_previous(),
         }
-    })
+    }, status=status.HTTP_200_OK)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def user_following(request, username):
-    """Get users that this user is following"""
+    """Get users that this user is following with pagination"""
     user = get_object_or_404(User, username=username)
     
     page = int(request.GET.get('page', 1))
     per_page = min(int(request.GET.get('per_page', 50)), 100)
     
-    following = user.following.all()
+    following = user.following.select_related('following')
     paginator = Paginator(following, per_page)
     
     try:
@@ -897,9 +702,13 @@ def user_following(request, username):
     except:
         following_page = paginator.page(1)
     
-    return JsonResponse({
+    # Extract user objects from follow relationships
+    following_users = [follow.following for follow in following_page]
+    serializer = UserSerializer(following_users, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'following': [serialize_user(f, current_user=request.user) for f in following_page],
+        'following': serializer.data,
         'pagination': {
             'page': page,
             'per_page': per_page,
@@ -908,37 +717,38 @@ def user_following(request, username):
             'has_next': following_page.has_next(),
             'has_previous': following_page.has_previous(),
         }
-    })
+    }, status=status.HTTP_200_OK)
 
 
 # ════════════════════════════════════════════════════════════
 # 📝 Post Endpoints
 # ════════════════════════════════════════════════════════════
 
-@csrf_exempt
-@require_http_methods(["GET", "POST"])
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
 def posts_list_create(request):
     """List all posts or create new post"""
     
     if request.method == 'GET':
-        # پارامترهای جستجو
+        # Search parameters
         category = request.GET.get('category')
         username = request.GET.get('username')
         page = int(request.GET.get('page', 1))
-        per_page = min(int(request.GET.get('per_page', 20)), 100)  # حداکثر 100 پست در صفحه
+        per_page = min(int(request.GET.get('per_page', 20)), 100)
         
-        # ساخت کوئری
-        query = Post.objects.filter(parent=None)
+        # Build query
+        posts = Post.objects.filter(parent=None)
         
         if category:
-            query = query.filter(category=category)
+            posts = posts.filter(category=category)
         
         if username:
             user = get_object_or_404(User, username=username)
-            query = query.filter(author=user)
+            posts = posts.filter(author=user)
         
-        posts = query.select_related('author').prefetch_related(
-            'media', 'mentions', 'reactions'
+        # Optimize queries
+        posts = posts.select_related('author').prefetch_related(
+            'media', 'mentions', 'reactions', 'saved_by'
         ).order_by('-created_at')
         
         # Pagination
@@ -948,9 +758,11 @@ def posts_list_create(request):
         except:
             posts_page = paginator.page(1)
         
-        return JsonResponse({
+        serializer = PostSerializer(posts_page, many=True, context={'request': request})
+        
+        return Response({
             'success': True,
-            'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in posts_page],
+            'posts': serializer.data,
             'pagination': {
                 'page': page,
                 'per_page': per_page,
@@ -959,52 +771,40 @@ def posts_list_create(request):
                 'has_next': posts_page.has_next(),
                 'has_previous': posts_page.has_previous(),
             }
-        })
+        }, status=status.HTTP_200_OK)
     
-    # POST - ایجاد پست جدید
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-
+    # POST - Create new post
     try:
         with transaction.atomic():
-            content = request.POST.get('content', '').strip()
-            tags = request.POST.get('tags', '').strip()
-            mentions_raw = request.POST.get('mentions', '').strip()
-            parent_id = request.POST.get('parent')
-            category = request.POST.get('category', '').strip()
+            content = request.data.get('content', '').strip()
+            tags = request.data.get('tags', '').strip()
+            mentions_raw = request.data.get('mentions', '').strip()
+            parent_id = request.data.get('parent')
+            category = request.data.get('category', '').strip()
 
-            # اعتبارسنجی
+            # Validation
             if not content and not request.FILES:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Post content or media required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            if len(content) > 5000:
-                return JsonResponse({
+            if len(content) > MAX_POST_CONTENT_LENGTH:
+                return Response({
                     'success': False,
-                    'message': 'Post content is too long (max 5000 characters)'
-                }, status=400)
-
-            if len(tags) > 4096:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Tags are too long'
-                }, status=400)
-
-            # دسته‌بندی برای پست‌های اصلی الزامی است
-            if not parent_id and not category:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Room/Category is required'
-                }, status=400)
+                    'message': f'Post content is too long (max {MAX_POST_CONTENT_LENGTH} characters)'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             parent = None
             if parent_id:
                 parent = Post.objects.filter(id=parent_id).first()
+
+            # Category is required for main posts
+            if not parent and not category:
+                return Response({
+                    'success': False,
+                    'message': 'Room/Category is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             post = Post.objects.create(
                 author=request.user,
@@ -1014,7 +814,7 @@ def posts_list_create(request):
                 category=category
             )
 
-            # مدیریت منشن‌ها
+            # Handle mentions
             if mentions_raw:
                 usernames = [u.strip() for u in mentions_raw.split(',') if u.strip()]
                 mentioned_users = User.objects.filter(username__in=usernames)
@@ -1029,9 +829,9 @@ def posts_list_create(request):
                             message=f'{request.user.username} mentioned you in a post'
                         )
 
-            # مدیریت فایل‌های مدیا
+            # Handle media files
             for f in request.FILES.getlist('media'):
-                # اعتبارسنجی نوع فایل
+                # Validate file type
                 ctype = f.content_type or mimetypes.guess_type(f.name)[0] or ''
                 if ctype.startswith('image/'):
                     mtype = 'image'
@@ -1042,89 +842,86 @@ def posts_list_create(request):
                 else:
                     mtype = 'file'
                 
-                # اعتبارسنجی سایز فایل (حداکثر 10MB)
-                if f.size > 10 * 1024 * 1024:
-                    continue  # فایل‌های بزرگ را نادیده بگیر
+                # Validate file size
+                if f.size > MAX_MEDIA_FILE_SIZE:
+                    continue  # Skip large files
                     
                 PostMedia.objects.create(post=post, file=f, media_type=mtype)
 
-            return JsonResponse({
+            serializer = PostSerializer(post, context={'request': request})
+            return Response({
                 'success': True,
-                'post': serialize_post(post, include_user_info=True, current_user=request.user)
-            }, status=201)
+                'post': serializer.data
+            }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Post creation failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to create post'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def post_detail(request, post_id):
     """Get single post details with comments and replies"""
-    post = get_object_or_404(Post, id=post_id)
-    data = serialize_post(post, include_user_info=True, current_user=request.user)
+    post = get_object_or_404(
+        Post.objects.select_related('author')
+        .prefetch_related('media', 'mentions', 'reactions', 'saved_by'),
+        id=post_id
+    )
     
-    # Get comments
-    comments = Comment.objects.filter(post=post).select_related('user').order_by('created_at')
-    data['comments'] = [serialize_comment(c, current_user=request.user) for c in comments]
+    # Get post data
+    post_serializer = PostSerializer(post, context={'request': request})
+    data = post_serializer.data
     
-    # Get replies
+    # Get comments with optimization
+    comments = Comment.objects.filter(post=post).select_related('user').prefetch_related('likes').order_by('created_at')
+    comment_serializer = CommentSerializer(comments, many=True, context={'request': request})
+    data['comments'] = comment_serializer.data
+    
+    # Get replies with optimization
     replies = Post.objects.filter(parent=post).select_related('author').prefetch_related(
-        'media', 'mentions'
+        'media', 'mentions', 'reactions'
     ).order_by('created_at')
-    data['replies'] = [serialize_post(r, include_user_info=True, current_user=request.user) for r in replies]
+    reply_serializer = PostSerializer(replies, many=True, context={'request': request})
+    data['replies'] = reply_serializer.data
     
-    return JsonResponse({
+    return Response({
         'success': True,
         'post': data
-    })
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def post_like(request, post_id):
-    """Like/unlike a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
+def _handle_post_reaction(request, post_id, reaction_type):
+    """Helper function to handle post reactions"""
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
             if post.author == request.user:
-                return JsonResponse({
+                return {
                     'success': False,
-                    'message': 'You cannot like your own post'
-                }, status=400)
+                    'message': f'You cannot {reaction_type} your own post'
+                }, status.HTTP_400_BAD_REQUEST
             
-            r = Reaction.objects.filter(user=request.user, post=post).first()
+            existing_reaction = Reaction.objects.filter(user=request.user, post=post).first()
             
-            if r and r.reaction == 'like':
-                # Unlike
-                r.delete()
-                likes_count = post.reactions.filter(reaction='like').count()
-                dislikes_count = post.reactions.filter(reaction='dislike').count()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Unliked',
-                    'likes_count': likes_count,
-                    'dislikes_count': dislikes_count,
-                    'user_reaction': None
-                })
+            if existing_reaction and existing_reaction.reaction == reaction_type:
+                # Remove reaction
+                existing_reaction.delete()
+                action = f'un{reaction_type}d'
+                user_reaction = None
             else:
-                # Like - حذف reaction قبلی اگر وجود دارد
-                if r:
-                    r.delete()
+                # Add/change reaction
+                if existing_reaction:
+                    existing_reaction.delete()
                 
-                Reaction.objects.create(user=request.user, post=post, reaction='like')
+                Reaction.objects.create(user=request.user, post=post, reaction=reaction_type)
                 
-                # ایجاد نوتیفیکیشن
-                if post.author != request.user:
+                # Create notification for like (not for dislike)
+                if reaction_type == 'like' and post.author != request.user:
                     Notification.objects.create(
                         recipient=post.author,
                         sender=request.user,
@@ -1133,108 +930,67 @@ def post_like(request, post_id):
                         message=f'{request.user.username} liked your post'
                     )
                 
-                likes_count = post.reactions.filter(reaction='like').count()
-                dislikes_count = post.reactions.filter(reaction='dislike').count()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Liked',
-                    'likes_count': likes_count,
-                    'dislikes_count': dislikes_count,
-                    'user_reaction': 'like'
-                })
+                action = f'{reaction_type}d'
+                user_reaction = reaction_type
+            
+            # Get updated counts
+            likes_count = post.reactions.filter(reaction='like').count()
+            dislikes_count = post.reactions.filter(reaction='dislike').count()
+            
+            return {
+                'success': True,
+                'message': action.capitalize(),
+                'likes_count': likes_count,
+                'dislikes_count': dislikes_count,
+                'user_reaction': user_reaction
+            }, status.HTTP_200_OK
+            
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Reaction handling failed: {str(e)}")
+        return {
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Reaction operation failed'
+        }, status.HTTP_500_INTERNAL_SERVER_ERROR
 
-@csrf_exempt
-@require_http_methods(["POST"])
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def post_like(request, post_id):
+    """Like/unlike a post"""
+    result, status_code = _handle_post_reaction(request, post_id, 'like')
+    return Response(result, status=status_code)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def post_dislike(request, post_id):
     """Dislike/remove dislike from a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
-    try:
-        with transaction.atomic():
-            post = get_object_or_404(Post, id=post_id)
-            
-            if post.author == request.user:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'You cannot dislike your own post'
-                }, status=400)
-            
-            r = Reaction.objects.filter(user=request.user, post=post).first()
-            
-            if r and r.reaction == 'dislike':
-                # Remove dislike
-                r.delete()
-                likes_count = post.reactions.filter(reaction='like').count()
-                dislikes_count = post.reactions.filter(reaction='dislike').count()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Removed dislike',
-                    'likes_count': likes_count,
-                    'dislikes_count': dislikes_count,
-                    'user_reaction': None
-                })
-            else:
-                # Dislike - حذف reaction قبلی اگر وجود دارد
-                if r:
-                    r.delete()
-                
-                Reaction.objects.create(user=request.user, post=post, reaction='dislike')
-                
-                likes_count = post.reactions.filter(reaction='like').count()
-                dislikes_count = post.reactions.filter(reaction='dislike').count()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Disliked',
-                    'likes_count': likes_count,
-                    'dislikes_count': dislikes_count,
-                    'user_reaction': 'dislike'
-                })
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e)
-        }, status=500)
+    result, status_code = _handle_post_reaction(request, post_id, 'dislike')
+    return Response(result, status=status_code)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def post_comment(request, post_id):
     """Add comment to a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
-            try:
-                data = json.loads(request.body)
-            except Exception:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Invalid JSON'
-                }, status=400)
-            
-            content = data.get('content', '').strip()
-            parent_id = data.get('parent')
+            content = request.data.get('content', '').strip()
+            parent_id = request.data.get('parent')
             
             if not content:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Comment content required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if len(content) > MAX_COMMENT_CONTENT_LENGTH:
+                return Response({
+                    'success': False,
+                    'message': f'Comment is too long (max {MAX_COMMENT_CONTENT_LENGTH} characters)'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             parent = None
             if parent_id:
@@ -1247,7 +1003,7 @@ def post_comment(request, post_id):
                 parent=parent
             )
             
-            # ایجاد نوتیفیکیشن
+            # Create notification
             if post.author != request.user:
                 Notification.objects.create(
                     recipient=post.author,
@@ -1258,7 +1014,7 @@ def post_comment(request, post_id):
                     message=f'{request.user.username} commented on your post'
                 )
             
-            # اگر کامنت پاسخ به کامنت دیگری است
+            # If comment is a reply to another comment
             if parent and parent.user != request.user:
                 Notification.objects.create(
                     recipient=parent.user,
@@ -1269,324 +1025,361 @@ def post_comment(request, post_id):
                     message=f'{request.user.username} replied to your comment'
                 )
             
-            return JsonResponse({
+            serializer = CommentSerializer(comment, context={'request': request})
+            
+            return Response({
                 'success': True,
-                'comment': serialize_comment(comment, current_user=request.user),
+                'comment': serializer.data,
                 'comments_count': post.comments.count()
-            })
+            }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Comment creation failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to create comment'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["DELETE", "POST"])
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_post(request, post_id):
     """Delete a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
             if post.author != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only delete your own posts'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
             post.delete()
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Post deleted successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Post deletion failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to delete post'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["PUT", "PATCH", "POST"])
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_post(request, post_id):
     """Update a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
             if post.author != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only edit your own posts'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
-            data = json.loads(request.body) if request.body else {}
+            # Use serializer for validation
+            serializer = PostSerializer(post, data=request.data, partial=True, context={'request': request})
             
-            # فقط فیلدهای قابل ویرایش
-            updatable_fields = ['content', 'tags', 'category']
-            updated = False
-            
-            for field in updatable_fields:
-                if field in data:
-                    if field == 'content' and len(data[field]) > 5000:
-                        return JsonResponse({
-                            'success': False,
-                            'message': 'Content is too long (max 5000 characters)'
-                        }, status=400)
-                    
-                    setattr(post, field, data[field])
-                    updated = True
-            
-            if updated:
-                post.save()
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Post updated successfully',
-                'post': serialize_post(post, include_user_info=True, current_user=request.user)
-            })
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'message': 'Post updated successfully',
+                    'post': serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Validation failed',
+                    'errors': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Post update failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to update post'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def post_repost(request, post_id):
     """Repost a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
-            post = get_object_or_404(Post, id=post_id)
+            original_post = get_object_or_404(Post, id=post_id)
             
-            # بررسی اینکه کاربر پست خودش را repost نکند
-            if post.author == request.user:
-                return JsonResponse({
+            # Check if user is reposting their own post
+            if original_post.author == request.user:
+                return Response({
                     'success': False,
                     'message': 'You cannot repost your own post'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if already reposted
+            existing_repost = Post.objects.filter(
+                author=request.user, 
+                original_post=original_post,
+                is_repost=True
+            ).exists()
+            
+            if existing_repost:
+                return Response({
+                    'success': False,
+                    'message': 'You have already reposted this post'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             new_post = Post.objects.create(
                 author=request.user,
-                content=post.content,
+                content=original_post.content,
                 is_repost=True,
-                original_post=post,
-                tags=post.tags,
-                category=post.category
+                original_post=original_post,
+                tags=original_post.tags,
+                category=original_post.category
             )
             
-            for mu in post.mentions.all():
+            # Copy mentions
+            for mu in original_post.mentions.all():
                 new_post.mentions.add(mu)
             
-            for m in post.media.all():
-                PostMedia.objects.create(post=new_post, file=m.file, media_type=m.media_type)
-            
-            # ایجاد نوتیفیکیشن
+            # Create notification
             Notification.objects.create(
-                recipient=post.author,
+                recipient=original_post.author,
                 sender=request.user,
                 notif_type='repost',
-                post=post,
+                post=original_post,
                 message=f'{request.user.username} reposted your post'
             )
             
-            return JsonResponse({
+            serializer = PostSerializer(new_post, context={'request': request})
+            
+            return Response({
                 'success': True,
-                'post': serialize_post(new_post, include_user_info=True, current_user=request.user)
-            })
+                'post': serializer.data
+            }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Repost failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to repost'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def posts_by_category(request, category_id):
-    """Get posts by category/room"""
+    """Get posts by category/room with pagination"""
+    page = int(request.GET.get('page', 1))
+    per_page = min(int(request.GET.get('per_page', 20)), 100)
+    
     posts = Post.objects.filter(
         category=category_id,
         parent=None
     ).select_related('author').prefetch_related(
-        'media', 'mentions'
-    ).order_by('-created_at')[:100]
+        'media', 'mentions', 'reactions'
+    ).order_by('-created_at')
     
-    return JsonResponse({
+    paginator = Paginator(posts, per_page)
+    try:
+        posts_page = paginator.page(page)
+    except:
+        posts_page = paginator.page(1)
+    
+    serializer = PostSerializer(posts_page, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in posts],
+        'posts': serializer.data,
         'category': category_id,
-        'count': len(posts)
-    })
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'has_next': posts_page.has_next(),
+            'has_previous': posts_page.has_previous(),
+        }
+    }, status=status.HTTP_200_OK)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def user_posts(request, username):
-    """Get posts by specific user"""
+    """Get posts by specific user with pagination"""
     user = get_object_or_404(User, username=username)
+    
+    page = int(request.GET.get('page', 1))
+    per_page = min(int(request.GET.get('per_page', 20)), 100)
+    
     posts = Post.objects.filter(
         author=user,
         parent=None
     ).select_related('author').prefetch_related(
-        'media', 'mentions'
-    ).order_by('-created_at')[:100]
+        'media', 'mentions', 'reactions'
+    ).order_by('-created_at')
     
-    return JsonResponse({
+    paginator = Paginator(posts, per_page)
+    try:
+        posts_page = paginator.page(page)
+    except:
+        posts_page = paginator.page(1)
+    
+    user_serializer = UserSerializer(user, context={'request': request})
+    posts_serializer = PostSerializer(posts_page, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in posts],
+        'posts': posts_serializer.data,
         'username': username,
-        'user': serialize_user(user, include_sensitive=False, current_user=request.user),
-        'count': len(posts)
-    })
+        'user': user_serializer.data,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'has_next': posts_page.has_next(),
+            'has_previous': posts_page.has_previous(),
+        }
+    }, status=status.HTTP_200_OK)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def post_thread(request, post_id):
     """Get post thread (post with all its replies)"""
-    post = get_object_or_404(Post, id=post_id)
-    data = serialize_post(post, include_user_info=True, current_user=request.user)
+    post = get_object_or_404(
+        Post.objects.select_related('author').prefetch_related('media', 'mentions'),
+        id=post_id
+    )
     
-    replies = [
-        serialize_post(r, include_user_info=True, current_user=request.user)
-        for r in post.replies.select_related('author').prefetch_related(
-            'media', 'mentions'
-        ).order_by('created_at')
-    ]
-    data['replies'] = replies
+    # Get post data
+    post_serializer = PostSerializer(post, context={'request': request})
+    data = post_serializer.data
     
-    return JsonResponse({
+    # Get replies with optimization
+    replies = post.replies.select_related('author').prefetch_related(
+        'media', 'mentions', 'reactions'
+    ).order_by('created_at')
+    replies_serializer = PostSerializer(replies, many=True, context={'request': request})
+    data['replies'] = replies_serializer.data
+    
+    return Response({
         'success': True,
         'thread': data
-    })
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def save_post(request, post_id):
     """Save a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
             if post.saved_by.filter(id=request.user.id).exists():
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Post already saved'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             post.saved_by.add(request.user)
             
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Post saved successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Save post failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to save post'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def unsave_post(request, post_id):
     """Unsave a post"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             post = get_object_or_404(Post, id=post_id)
             
             if not post.saved_by.filter(id=request.user.id).exists():
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Post not saved'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             post.saved_by.remove(request.user)
             
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Post unsaved successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Unsave post failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to unsave post'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def saved_posts(request):
-    """Get user's saved posts"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
+    """Get user's saved posts with pagination"""
+    page = int(request.GET.get('page', 1))
+    per_page = min(int(request.GET.get('per_page', 20)), 100)
     
-    saved_posts = request.user.saved_posts.filter(parent=None)
+    saved_posts = request.user.saved_posts.filter(parent=None).select_related('author').prefetch_related(
+        'media', 'mentions', 'reactions'
+    ).order_by('-created_at')
     
-    return JsonResponse({
+    paginator = Paginator(saved_posts, per_page)
+    try:
+        saved_posts_page = paginator.page(page)
+    except:
+        saved_posts_page = paginator.page(1)
+    
+    serializer = PostSerializer(saved_posts_page, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'posts': [serialize_post(p, include_user_info=True, current_user=request.user) for p in saved_posts],
-        'count': len(saved_posts)
-    })
+        'posts': serializer.data,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'has_next': saved_posts_page.has_next(),
+            'has_previous': saved_posts_page.has_previous(),
+        }
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+# ════════════════════════════════════════════════════════════
+# 💬 Comment Endpoints
+# ════════════════════════════════════════════════════════════
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def like_comment(request, comment_id):
     """Like/unlike a comment"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user == request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You cannot like your own comment'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             if comment.likes.filter(id=request.user.id).exists():
                 comment.likes.remove(request.user)
@@ -1594,275 +1387,295 @@ def like_comment(request, comment_id):
             else:
                 comment.likes.add(request.user)
                 action = 'liked'
+                
+                # Create notification
+                if comment.user != request.user:
+                    Notification.objects.create(
+                        recipient=comment.user,
+                        sender=request.user,
+                        notif_type='like_comment',
+                        comment=comment,
+                        message=f'{request.user.username} liked your comment'
+                    )
             
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': f'Comment {action}',
-                'likes_count': comment.likes_count,
+                'likes_count': comment.likes.count(),
                 'is_liked': comment.likes.filter(id=request.user.id).exists()
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Comment like failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to like comment'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["DELETE", "POST"])
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_comment(request, comment_id):
     """Delete a comment"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only delete your own comments'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
             comment.delete()
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Comment deleted successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Comment deletion failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to delete comment'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["PUT", "PATCH", "POST"])
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_comment(request, comment_id):
     """Update a comment"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only edit your own comments'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
-            data = json.loads(request.body)
-            content = data.get('content', '').strip()
+            content = request.data.get('content', '').strip()
             
             if not content:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Comment content is required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            if len(content) > 1000:
-                return JsonResponse({
+            if len(content) > MAX_COMMENT_CONTENT_LENGTH:
+                return Response({
                     'success': False,
-                    'message': 'Comment is too long (max 1000 characters)'
-                }, status=400)
+                    'message': f'Comment is too long (max {MAX_COMMENT_CONTENT_LENGTH} characters)'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             comment.content = content
             comment.save()
             
-            return JsonResponse({
+            serializer = CommentSerializer(comment, context={'request': request})
+            
+            return Response({
                 'success': True,
                 'message': 'Comment updated successfully',
-                'comment': serialize_comment(comment, current_user=request.user)
-            })
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
+                'comment': serializer.data
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Comment update failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to update comment'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # ════════════════════════════════════════════════════════════
 # 🔔 Notification Endpoints
 # ════════════════════════════════════════════════════════════
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def notifications_list(request):
-    """Get user notifications"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
+    """Get user notifications with pagination"""
+    page = int(request.GET.get('page', 1))
+    per_page = min(int(request.GET.get('per_page', 20)), 100)
     
-    notifs = Notification.objects.filter(
+    notifications = Notification.objects.filter(
         recipient=request.user
-    ).select_related('sender', 'post', 'comment').order_by('-created_at')[:100]
+    ).select_related('sender', 'post', 'comment').order_by('-created_at')
     
-    return JsonResponse({
+    paginator = Paginator(notifications, per_page)
+    try:
+        notifications_page = paginator.page(page)
+    except:
+        notifications_page = paginator.page(1)
+    
+    serializer = NotificationSerializer(notifications_page, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'notifications': [serialize_notification(n) for n in notifs],
-        'unread_count': notifs.filter(is_read=False).count()
-    })
+        'notifications': serializer.data,
+        'unread_count': Notification.objects.filter(recipient=request.user, is_read=False).count(),
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'has_next': notifications_page.has_next(),
+            'has_previous': notifications_page.has_previous(),
+        }
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def notifications_mark_read(request):
     """Mark notifications as read"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
+    ids = request.data.get('ids', [])
     
     try:
-        data = json.loads(request.body)
-    except Exception:
-        return JsonResponse({
+        if not ids:
+            # Mark all as read
+            Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+        else:
+            # Mark specific notifications as read
+            Notification.objects.filter(
+                recipient=request.user,
+                id__in=ids
+            ).update(is_read=True)
+        
+        return Response({
+            'success': True,
+            'message': 'Notifications marked as read'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Mark notifications as read failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
-    
-    ids = data.get('ids', [])
-    
-    if not ids:
-        # Mark all as read
-        Notification.objects.filter(recipient=request.user).update(is_read=True)
-    else:
-        # Mark specific notifications as read
-        Notification.objects.filter(
-            recipient=request.user,
-            id__in=ids
-        ).update(is_read=True)
-    
-    return JsonResponse({
-        'success': True,
-        'message': 'Notifications marked as read'
-    })
+            'message': 'Failed to mark notifications as read'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ════════════════════════════════════════════════════════════
 # 💬 Messaging Endpoints
 # ════════════════════════════════════════════════════════════
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def conversations_list(request):
     """Get user's conversations"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
+    conversations = Conversation.objects.filter(participants=request.user).prefetch_related(
+        'participants', 'messages'
+    ).order_by('-updated_at')
     
-    conversations = Conversation.objects.filter(participants=request.user)
+    serializer = ConversationSerializer(conversations, many=True, context={'request': request})
     
-    return JsonResponse({
+    return Response({
         'success': True,
-        'conversations': [serialize_conversation(c, request.user) for c in conversations],
+        'conversations': serializer.data,
         'count': len(conversations)
-    })
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def start_conversation(request, username):
     """Start a new conversation"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             other_user = get_object_or_404(User, username=username)
             
             if other_user == request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Cannot start conversation with yourself'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            # بررسی وجود مکالمه قبلی
-            conversation = Conversation.objects.filter(participants=request.user).filter(participants=other_user).first()
+            # Check for existing conversation
+            conversation = Conversation.objects.filter(participants=request.user).filter(
+                participants=other_user
+            ).first()
             
             if not conversation:
                 conversation = Conversation.objects.create()
                 conversation.participants.add(request.user, other_user)
             
-            return JsonResponse({
+            serializer = ConversationSerializer(conversation, context={'request': request})
+            
+            return Response({
                 'success': True,
-                'conversation_id': conversation.id,
+                'conversation': serializer.data,
                 'message': 'Conversation started successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Start conversation failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to start conversation'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@require_http_methods(["GET"])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def conversation_detail(request, conversation_id):
-    """Get conversation messages"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
+    """Get conversation messages with pagination"""
+    conversation = get_object_or_404(
+        Conversation.objects.prefetch_related('participants', 'messages'),
+        id=conversation_id, 
+        participants=request.user
+    )
     
-    conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+    page = int(request.GET.get('page', 1))
+    per_page = min(int(request.GET.get('per_page', 50)), 100)
     
-    # علامت‌گذاری پیام‌ها به عنوان خوانده شده
+    # Mark messages as read
     conversation.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
     
-    messages = conversation.messages.all()
+    messages = conversation.messages.all().order_by('-created_at')
+    paginator = Paginator(messages, per_page)
     
-    return JsonResponse({
+    try:
+        messages_page = paginator.page(page)
+    except:
+        messages_page = paginator.page(1)
+    
+    conversation_serializer = ConversationSerializer(conversation, context={'request': request})
+    message_serializer = MessageSerializer(messages_page, many=True, context={'request': request})
+    
+    return Response({
         'success': True,
-        'conversation': serialize_conversation(conversation, request.user),
-        'messages': [serialize_message(m) for m in messages],
-        'count': len(messages)
-    })
+        'conversation': conversation_serializer.data,
+        'messages': message_serializer.data,
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': paginator.count,
+            'has_next': messages_page.has_next(),
+            'has_previous': messages_page.has_previous(),
+        }
+    }, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def send_message(request, conversation_id):
     """Send a message in conversation"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
             
-            data = request.POST
-            content = data.get('content', '').strip()
+            content = request.data.get('content', '').strip()
             image = request.FILES.get('image')
             file = request.FILES.get('file')
             
             if not content and not image and not file:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Message content or file is required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if content and len(content) > MAX_MESSAGE_CONTENT_LENGTH:
+                return Response({
+                    'success': False,
+                    'message': f'Message is too long (max {MAX_MESSAGE_CONTENT_LENGTH} characters)'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             message = Message.objects.create(
                 conversation=conversation,
@@ -1872,102 +1685,92 @@ def send_message(request, conversation_id):
                 file=file
             )
             
-            # آپدیت زمان مکالمه
+            # Update conversation time
             conversation.updated_at = timezone.now()
             conversation.save()
             
-            return JsonResponse({
+            serializer = MessageSerializer(message, context={'request': request})
+            
+            return Response({
                 'success': True,
-                'message': serialize_message(message)
-            }, status=201)
+                'message': serializer.data
+            }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Send message failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
-    
-@csrf_exempt
-@require_http_methods(["DELETE", "POST"])
+            'message': 'Failed to send message'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_message(request, message_id):
     """Delete a message"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             message = get_object_or_404(Message, id=message_id)
             
             if message.sender != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only delete your own messages'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
             message.delete()
-            return JsonResponse({
+            return Response({
                 'success': True,
                 'message': 'Message deleted successfully'
-            })
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Message deletion failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to delete message'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
-@require_http_methods(["PUT", "PATCH", "POST"])
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_message(request, message_id):
     """Update a message"""
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'message': 'Authentication required'
-        }, status=401)
-    
     try:
         with transaction.atomic():
             message = get_object_or_404(Message, id=message_id)
             
             if message.sender != request.user:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'You can only edit your own messages'
-                }, status=403)
+                }, status=status.HTTP_403_FORBIDDEN)
             
-            data = json.loads(request.body)
-            content = data.get('content', '').strip()
+            content = request.data.get('content', '').strip()
             
             if not content:
-                return JsonResponse({
+                return Response({
                     'success': False,
                     'message': 'Message content is required'
-                }, status=400)
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            if len(content) > 2000:
-                return JsonResponse({
+            if len(content) > MAX_MESSAGE_CONTENT_LENGTH:
+                return Response({
                     'success': False,
-                    'message': 'Message is too long (max 2000 characters)'
-                }, status=400)
+                    'message': f'Message is too long (max {MAX_MESSAGE_CONTENT_LENGTH} characters)'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
             message.content = content
             message.save()
             
-            return JsonResponse({
+            serializer = MessageSerializer(message, context={'request': request})
+            
+            return Response({
                 'success': True,
                 'message': 'Message updated successfully',
-                'message_data': serialize_message(message)
-            })
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'message': 'Invalid JSON'
-        }, status=400)
+                'message_data': serializer.data
+            }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({
+        logger.error(f"Message update failed: {str(e)}")
+        return Response({
             'success': False,
-            'message': str(e)
-        }, status=500)
+            'message': 'Failed to update message'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
