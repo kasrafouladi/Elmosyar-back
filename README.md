@@ -2,7 +2,7 @@
 
 ## Base URL
 ```bash
-curl http://89.106.206.119:8000/api/
+curl http://89.106.206.119:8000/api
 ```
 
 ## 🔐 Authentication Endpoints

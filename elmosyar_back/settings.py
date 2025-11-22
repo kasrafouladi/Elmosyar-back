@@ -172,7 +172,7 @@ SIMPLE_JWT = {
 
 # Session settings for cross-origin
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = False
 
 # Session Configuration
