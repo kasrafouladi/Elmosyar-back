@@ -13,7 +13,7 @@ urlpatterns = [
     path('token/refresh/', views.RefreshTokenView.as_view(), name='token_refresh'),
 
     path('verify-email/<str:token>/', views.verify_email, name='verify_email'),
-    path('resend-verification-email/', views.resend_verification_email, name='resend-verification-email')
+    path('resend-verification-email/', views.resend_verification_email, name='resend-verification-email'),
     path('password-reset/request/', views.request_password_reset, name='request_password_reset'),
     path('password-reset/<str:token>/', views.reset_password, name='reset_password'),
     
