@@ -1,8 +1,8 @@
 # API Request Examples with cURL
 
 ## Base URL
-```
-http://89.106.206.119:8000/api
+```bash
+curl http://89.106.206.119:8000/api
 ```
 
 ## 🔐 Authentication Endpoints
