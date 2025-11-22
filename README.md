@@ -15,7 +15,7 @@ curl -X POST http://89.106.206.119:8000/api/signup/ \
     "username": "johndoe",
     "email": "john@example.com",
     "password": "securepassword123",
-    "password_confirm": "securepassword123",
+    "password2": "securepassword123",
     "first_name": "John",
     "last_name": "Doe"
   }'
