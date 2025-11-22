@@ -655,6 +655,7 @@ curl -X DELETE http://89.106.206.119:8000/api/profile/delete-picture/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 ```
 
+
 **Response:**
 ```json
 {
