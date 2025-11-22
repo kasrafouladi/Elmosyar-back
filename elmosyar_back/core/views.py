@@ -151,6 +151,114 @@ def index(request):
 # 🔐 Authentication Endpoints
 # ════════════════════════════════════════════════════════════
 
+
+def send_verification_email(user):
+    """Helper function to send verification email"""
+    verification_token = user.generate_email_verification_token()
+    verification_link = f"{settings.FRONTEND_URL}/verify-email/{verification_token}/"
+    
+    try:
+        send_mail(
+            'Email Verification',
+            f'Click this link to verify your email: {verification_link}',
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Email sending failed: {str(e)}")
+        return False
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_verification_email(request):
+    """Resend email verification link"""
+    serializer = ResendVerificationSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Validation failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    email = serializer.validated_data['email']
+    
+    try:
+        user = User.objects.get(email=email)
+        
+        if user.is_email_verified:
+            return Response({
+                'success': False,
+                'message': 'Email is already verified.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        email_sent = send_verification_email(user)
+        
+        if email_sent:
+            return Response({
+                'success': True,
+                'message': 'Verification email sent successfully. Please check your email.'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'success': False,
+                'message': 'Failed to send verification email. Please try again later.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except User.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'User with this email does not exist.'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_email(request, token):
+    """Verify user email"""
+    try:
+        with transaction.atomic():
+            user = get_object_or_404(User, email_verification_token=token)
+            
+            if user.is_email_verified:
+                return Response({
+                    'success': False,
+                    'message': 'Email is already verified'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not user.is_email_verification_token_valid():
+                return Response({
+                    'success': False,
+                    'message': 'Verification token has expired'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            user.verify_email()
+            user.is_active = True
+            user.save()
+            
+            # Generate tokens for auto-login
+            refresh = RefreshToken.for_user(user)
+            
+            return Response({
+                'success': True,
+                'message': 'Email verified successfully',
+                'user': UserSerializer(user, context={'request': request}).data,
+                'tokens': {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Email verification failed: {str(e)}")
+        return Response({
+            'success': False,
+            'message': 'Verification failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
@@ -160,24 +268,17 @@ def signup(request):
         with transaction.atomic():
             user = serializer.save()
             
-            # Send verification email
-            verification_token = user.generate_email_verification_token()
-            verification_link = f"{settings.FRONTEND_URL}/verify-email/{verification_token}/"
+            # Send verification email using helper function
+            email_sent = send_verification_email(user)
             
-            try:
-                send_mail(
-                    'Email Verification',
-                    f'Click this link to verify your email: {verification_link}',
-                    settings.DEFAULT_FROM_EMAIL,
-                    [user.email],
-                    fail_silently=False,
-                )
-            except Exception as e:
-                logger.error(f"Email sending failed: {str(e)}")
+            if email_sent:
+                message = 'Signup successful. Please check your email to verify your account.'
+            else:
+                message = 'Signup successful, but verification email failed to send. Please contact support.'
 
             return Response({
                 'success': True,
-                'message': 'Signup successful. Please check your email to verify your account.',
+                'message': message,
                 'user': UserSerializer(user, context={'request': request}).data
             }, status=status.HTTP_201_CREATED)
     
@@ -267,50 +368,6 @@ class LogoutView(APIView):
                 'success': False,
                 'message': 'Invalid token'
             }, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def verify_email(request, token):
-    """Verify user email"""
-    try:
-        with transaction.atomic():
-            user = get_object_or_404(User, email_verification_token=token)
-            
-            if user.is_email_verified:
-                return Response({
-                    'success': False,
-                    'message': 'Email is already verified'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if not user.is_email_verification_token_valid():
-                return Response({
-                    'success': False,
-                    'message': 'Verification token has expired'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            user.verify_email()
-            user.is_active = True
-            user.save()
-            
-            # Generate tokens for auto-login
-            refresh = RefreshToken.for_user(user)
-            
-            return Response({
-                'success': True,
-                'message': 'Email verified successfully',
-                'user': UserSerializer(user, context={'request': request}).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
-                }
-            }, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Email verification failed: {str(e)}")
-        return Response({
-            'success': False,
-            'message': 'Verification failed'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])

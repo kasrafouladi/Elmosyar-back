@@ -7,6 +7,18 @@ from datetime import timedelta
 import json
 import mimetypes
 
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    
+    def validate_email(self, value):
+        try:
+            user = User.objects.get(email=value)
+            if user.is_email_verified:
+                raise serializers.ValidationError("Email is already verified.")
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User with this email does not exist.")
+        return value
+
 class UserSerializer(serializers.ModelSerializer):
     followers_count = serializers.ReadOnlyField()
     following_count = serializers.ReadOnlyField()
