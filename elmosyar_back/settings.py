@@ -1,3 +1,4 @@
+
 """
 Django settings for elmosyar_back project.
 Optimized for Pure REST API - Allow all origins
@@ -47,11 +48,19 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# CSRF trusted origins - مهم!
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://89.106.206.119:3000',
+    'https://89.106.206.119:3000',
+]
+
 # Codespaces configuration
 if 'CODESPACE_NAME' in os.environ:
     codespace_name = config("CODESPACE_NAME", default='')
     codespace_domain = config("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", default='')
-    CSRF_TRUSTED_ORIGINS = [f'https://{codespace_name}-8000.{codespace_domain}']
+    CSRF_TRUSTED_ORIGINS.append(f'https://{codespace_name}-8000.{codespace_domain}')
 
 # Apps
 INSTALLED_APPS = [
@@ -78,7 +87,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    # "django.middleware.csrf.CsrfViewMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",  # فعال کردن CSRF
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -182,13 +191,9 @@ SESSION_SAVE_EVERY_REQUEST = True
 
 # CSRF settings for cross-origin API
 CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'None' if DEBUG else 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'  # در حالت توسعه 'Lax' بهتره
 CSRF_COOKIE_SECURE = False
-
-if DEBUG:
-    CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*', 'http://localhost:3000', 'http://127.0.0.1:3000']
-else:
-    CSRF_TRUSTED_ORIGINS = []
+CSRF_USE_SESSIONS = False
 
 # Email Configuration
 EMAIL_BACKEND = config(
