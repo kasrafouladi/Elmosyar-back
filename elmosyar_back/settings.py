@@ -77,8 +77,13 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     
-    # Local
-    "core"
+    # Local apps
+    "accounts",
+    "social",
+    "posts",
+    "interactions",
+    "notifications",
+    "messaging",
 ]
 
 # Middleware - CORS must be at the top
@@ -148,7 +153,7 @@ MEDIA_ROOT = "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom user model
-AUTH_USER_MODEL = "core.User"
+AUTH_USER_MODEL = 'accounts.User'
 
 # REST Framework
 REST_FRAMEWORK = {
