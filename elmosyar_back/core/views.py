@@ -23,7 +23,7 @@ from .models import User, Post, PostMedia, Comment, Notification, Reaction, Conv
 from .serializers import (
     UserSerializer, SignUpSerializer, LoginSerializer, PostSerializer, 
     CommentSerializer, NotificationSerializer, ConversationSerializer, 
-    MessageSerializer, PostMediaSerializer
+    MessageSerializer, PostMediaSerializer, ResendVerificationSerializer
 )
 
 # Constants
