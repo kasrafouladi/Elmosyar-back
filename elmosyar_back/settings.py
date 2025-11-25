@@ -64,6 +64,14 @@ if 'CODESPACE_NAME' in os.environ:
 
 # Apps
 INSTALLED_APPS = [
+    # Local apps
+    "accounts",
+    "social",
+    "posts",
+    "interactions",
+    "notifications",
+    "messaging",
+
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -76,14 +84,6 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
-    
-    # Local apps
-    "accounts",
-    "social",
-    "posts",
-    "interactions",
-    "notifications",
-    "messaging",
 ]
 
 # Middleware - CORS must be at the top
