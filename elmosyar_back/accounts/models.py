@@ -81,7 +81,7 @@ class User(AbstractUser):
         if not self.email_verification_sent_at:
             return False            
         return timezone.now() - self.email_verification_sent_at <= timedelta(hours=1)
-"""
+    """
     def follow(self, user):
         if user != self and not self.following.filter(id=user.id).exists():
             UserFollow = self._get_user_follow_model()
@@ -107,7 +107,7 @@ class User(AbstractUser):
     def following_count(self):
         UserFollow = self._get_user_follow_model()
         return UserFollow.objects.filter(follower=self).count()
-"""
+    """
     @property
     def posts_count(self):
         """تعداد پست‌های کاربر"""
