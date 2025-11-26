@@ -7,7 +7,7 @@ import os
 from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
-
+from django.apps import apps
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -42,6 +42,10 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+    
+    def _get_user_follow_model(self):
+        """استفاده از apps.get_model برای جلوگیری از circular imports"""
+        return apps.get_model('social', 'UserFollow')
 
     def generate_email_verification_token(self):
         """تولید توکن برای تأیید ایمیل و هش کردن آن"""
@@ -79,16 +83,14 @@ class User(AbstractUser):
         return timezone.now() - self.email_verification_sent_at <= timedelta(hours=1)
 
     def follow(self, user):
-        """فالو کردن کاربر دیگر"""
-        from social.models import UserFollow
         if user != self and not self.following.filter(id=user.id).exists():
+            UserFollow = self._get_user_follow_model()
             UserFollow.objects.create(follower=self, following=user)
             return True
         return False
 
     def unfollow(self, user):
-        """آنفالو کردن کاربر"""
-        from social.models import UserFollow
+        UserFollow = self._get_user_follow_model()
         try:
             follow_relation = UserFollow.objects.get(follower=self, following=user)
             follow_relation.delete()
@@ -98,14 +100,12 @@ class User(AbstractUser):
 
     @property
     def followers_count(self):
-        from social.models import UserFollow
-        """تعداد فالوورها"""
+        UserFollow = self._get_user_follow_model()
         return UserFollow.objects.filter(following=self).count()
 
     @property
     def following_count(self):
-        from social.models import UserFollow
-        """تعداد افرادی که کاربر فالو کرده"""
+        UserFollow = self._get_user_follow_model()
         return UserFollow.objects.filter(follower=self).count()
 
     @property
