@@ -46,7 +46,7 @@ class User(AbstractUser):
     
     def _get_user_follow_model(self):
         return apps.get_model('social', 'UserFollow')
-    
+
     def generate_email_verification_token(self):
         self.email_verification_token = str(uuid.uuid4())
         self.email_verification_sent_at = timezone.now()
@@ -71,7 +71,7 @@ class User(AbstractUser):
             return False
         return timezone.now() - self.password_reset_sent_at <= timedelta(hours=1)
 
-    def is_email_verification_token_valid(self, token):
+    def is_email_verification_token_valid(self):
         if not self.email_verification_sent_at:
             return False            
         return timezone.now() - self.email_verification_sent_at <= timedelta(hours=1)
