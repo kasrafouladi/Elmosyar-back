@@ -151,7 +151,7 @@ def verify_email(request, token):
     """Verify user email"""
     try:
         with transaction.atomic():
-            user = get_object_or_404(User, email_verification_token=make_password(token))
+            user = get_object_or_404(User, email_verification_token=token)
             
             if user.is_email_verified:
                 return Response({
@@ -342,7 +342,7 @@ def reset_password(request, token):
     """Reset password with token"""
     try:
         with transaction.atomic():
-            user = get_object_or_404(User, password_reset_token=make_password(token))
+            user = get_object_or_404(User, password_reset_token=token)
 
             if not user.is_password_reset_token_valid():
                 return Response({

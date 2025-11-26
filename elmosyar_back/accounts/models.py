@@ -48,20 +48,16 @@ class User(AbstractUser):
         return apps.get_model('social', 'UserFollow')
     
     def generate_email_verification_token(self):
-        """تولید توکن برای تأیید ایمیل و هش کردن آن"""
-        token = str(uuid.uuid4())
-        self.email_verification_token = make_password(token)
+        self.email_verification_token = str(uuid.uuid4())
         self.email_verification_sent_at = timezone.now()
         self.save()
-        return token
+        return self.email_verification_token
 
     def generate_password_reset_token(self):
-        """تولید توکن برای ریست پسورد و هش کردن آن"""
-        token = str(uuid.uuid4())
-        self.password_reset_token = make_password(token)
+        self.password_reset_token = str(uuid.uuid4())
         self.password_reset_sent_at = timezone.now()
         self.save()
-        return token
+        return self.password_reset_token
 
     def verify_email(self):
         self.is_email_verified = True
@@ -71,13 +67,11 @@ class User(AbstractUser):
         return True
 
     def is_password_reset_token_valid(self):
-        """بررسی معتبر بودن توکن ریست پسورد"""
         if not self.password_reset_sent_at:
             return False
         return timezone.now() - self.password_reset_sent_at <= timedelta(hours=1)
 
     def is_email_verification_token_valid(self, token):
-        """بررسی معتبر بودن توکن تأیید ایمیل"""
         if not self.email_verification_sent_at:
             return False            
         return timezone.now() - self.email_verification_sent_at <= timedelta(hours=1)
