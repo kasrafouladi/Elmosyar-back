@@ -1013,9 +1013,29 @@ curl -X POST http://89.106.206.119:8000/api/comments/1/like/ \
 ```json
 {
   "success": true,
-  "message": "Comment liked",
-  "likes_count": 1,
-  "is_liked": true
+  "message": "LIKE",
+  "likes_count": 12,
+  "dislikes_count": 2,
+  "is_liked": true,
+  "is_disliked": false
+}
+
+
+### Dislike Comment
+```bash
+curl -X POST http://89.106.206.119:8000/api/comments/1/dislike/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "DISLIKE",
+  "likes_count": 12,
+  "dislikes_count": 2,
+  "is_liked": false,
+  "is_disliked": true
 }
 ```
 
