@@ -7,8 +7,6 @@ import os
 class Post(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     content = models.TextField(max_length=5000)
-    image = models.ImageField(upload_to='posts/images/', blank=True, null=True)
-    video = models.FileField(upload_to='posts/videos/', blank=True, null=True)
     parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
     category = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -18,7 +18,7 @@ def api_root(request):
     })
 
 urlpatterns = [
-    path('', api_root, name='api_root'),
+    path('api/', api_root, name='api_root'),
     path('admin/', admin.site.urls),
     
     # App routes
