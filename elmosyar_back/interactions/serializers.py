@@ -13,7 +13,8 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = [
             'id', 'user', 'user_info', 'post', 'content', 'created_at',
-            'parent', 'likes_count', 'replies_count', 'is_liked'
+            'parent', 'likes_count', 'replies_count', 'is_liked',
+            'dislikes_count', 'is_disliked'
         ]
         read_only_fields = ['user', 'created_at']
 
