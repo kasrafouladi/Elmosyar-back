@@ -167,7 +167,7 @@ def posts_list_create(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def post_detail(request, post_id):
     """Get single post details with comments and replies"""
     post = get_object_or_404(

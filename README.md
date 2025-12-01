@@ -419,7 +419,8 @@ curl -X GET "http://89.106.206.119:8000/api/posts/?page=1&per_page=10&category=t
 
 ### Get Post Detail
 ```bash
-curl -X GET http://89.106.206.119:8000/api/posts/1/
+curl -X GET http://89.106.206.119:8000/api/posts/1/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 ```
 
 **Response:**
