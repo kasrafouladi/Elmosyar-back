@@ -1015,7 +1015,7 @@ curl -X POST http://89.106.206.119:8000/api/comments/1/like/ \
 ```json
 {
   "success": true,
-  "message": "Like",
+  "message": "Liked",
   "likes_count": 12,
   "dislikes_count": 2,
   "is_liked": true,
@@ -1033,7 +1033,7 @@ curl -X POST http://89.106.206.119:8000/api/comments/1/dislike/ \
 ```json
 {
   "success": true,
-  "message": "Dislike",
+  "message": "Disliked",
   "likes_count": 12,
   "dislikes_count": 2,
   "is_liked": false,
