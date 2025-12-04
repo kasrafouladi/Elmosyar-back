@@ -352,9 +352,110 @@ curl -X DELETE http://89.106.206.119:8000/api/profile/delete-picture/ \
 
 ## 📝 Post Endpoints
 
+### Example Format JSON File for Regex Validation
+**format.json for "products" category:**
+```json
+{
+  "name": "^[a-zA-Z0-9\\s]{3,100}$",
+  "price": "^[0-9]+(\\.[0-9]{1,2})?$",
+  "status": "^(available|out of stock|discontinued)$",
+  "category": "^(electronics|clothing|books|home)$",
+  "rating": "^[1-5](\\.[0-9])?$",
+  "stock": "^[0-9]+$"
+}
+```
+
+## ⚠️ Related Error Responses
+
+### Invalid Search JSON Format
+```json
+{
+  "success": false,
+  "message": "Invalid JSON in search parameter"
+}
+```
+
+### Category Required for Advanced Search
+```json
+{
+  "success": false,
+  "message": "Category is required for advanced search"
+}
+```
+
+### No Format Found for Category
+```json
+{
+  "success": false,
+  "message": "No format found for category: programming"
+}
+```
+
+### Invalid Regex Pattern in Search
+```json
+{
+  "success": false,
+  "message": "Error in advanced search"
+}
+```
+
+### Attribute Validation Failed
+```json
+{
+  "success": false,
+  "message": "Attribute 'price' does not match format pattern"
+}
+```
+
+### Required Attributes Missing
+```json
+{
+  "success": false,
+  "message": "Attribute 'title' is required and cannot be removed"
+}
+```
+
+### 📊 Post Attributes Structure
+
+Posts now support structured data through the `attributes` field. This allows for advanced filtering and validation based on category-specific formats.
+
+#### Example Post with Attributes:
+```json
+{
+  "id": 45,
+  "content": "Django REST Framework Tutorial",
+  "category": "tutorials",
+  "attributes": {
+    "difficulty": "intermediate",
+    "duration": "2 hours",
+    "prerequisites": ["python", "django basics"],
+    "resources": [
+      {"type": "video", "url": "https://example.com/video"},
+      {"type": "code", "url": "https://github.com/example"}
+    ],
+    "rating": 4.5,
+    "tags": ["django", "rest", "api"]
+  }
+}
+```
+
+### Search Parameters:
+- Use `search` query parameter with JSON object containing key-regex pairs
+- Regex patterns are applied to post attributes
+- Both format validation and search regex are applied
+- Category must be specified for advanced search
+
+### Validation Flow:
+1. When creating/updating a post with attributes
+2. System checks if category has a format file
+3. Validates each attribute against corresponding regex pattern in format
+4. Returns error if validation fails
+5. During search, applies both format validation and search criteria
+
+
 ### Get Posts (with pagination and filters)
 ```bash
-curl -X GET "http://89.106.206.119:8000/api/posts/?page=1&per_page=10&category=tech&username=johndoe" \
+curl -X GET "http://89.106.206.119:8000/api/posts/?category=programming&search={\"difficulty\":\"^(easy|medium)$\",\"language\":\"^python$\"}" \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
 ```
 
@@ -364,8 +465,7 @@ curl -X GET "http://89.106.206.119:8000/api/posts/?page=1&per_page=10&category=t
   "success": true,
   "posts": [
     {
-      "id": 1,
-      "author": 1,
+      "id": 45,
       "author_info": {
         "id": 1,
         "username": "johndoe",
@@ -377,39 +477,30 @@ curl -X GET "http://89.106.206.119:8000/api/posts/?page=1&per_page=10&category=t
         "following_count": 8,
         "posts_count": 25
       },
-      "content": "Just launched my new project! 🚀",
-      "created_at": "2024-01-15T14:30:00Z",
-      "updated_at": "2024-01-15T14:30:00Z",
-      "tags": "django,react,webdev",
-      "mentions": [],
-      "media": [
-        {
-          "id": 1,
-          "url": "/media/posts/images/project_screenshot.jpg",
-          "media_type": "image",
-          "caption": "Project screenshot",
-          "order": 0,
-          "file_size": 2048576
-        }
-      ],
-      "category": "tech",
-      "parent": null,
-      "is_repost": false,
-      "original_post": null,
-      "likes_count": 25,
-      "dislikes_count": 2,
-      "comments_count": 8,
+      "content": "Python tutorial for beginners",
+      "category": "programming",
+      "tags": "python,tutorial",
+      "attributes": {
+        "difficulty": "easy",
+        "language": "python",
+        "duration": "30min"
+      },
+      "likes_count": 12,
+      "dislikes_count": 0,
+      "comments_count": 5,
       "reposts_count": 3,
-      "replies_count": 0,
+      "replies_count": 2,
       "user_reaction": "like",
-      "is_saved": false
+      "is_saved": false,
+      "created_at": "2024-01-15T14:30:00Z",
+      "updated_at": "2024-01-15T14:30:00Z"
     }
   ],
   "pagination": {
     "page": 1,
-    "per_page": 10,
-    "total_pages": 5,
-    "total_count": 48,
+    "per_page": 20,
+    "total_pages": 3,
+    "total_count": 45,
     "has_next": true,
     "has_previous": false
   }
@@ -506,10 +597,18 @@ curl -X GET http://89.106.206.119:8000/api/posts/1/ \
 ```bash
 curl -X POST http://89.106.206.119:8000/api/posts/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
-  -F "content=Check out this amazing sunset! 🌅" \
-  -F "category=photography" \
-  -F "tags=sunset,nature" \
-  -F "media=@/path/to/sunset.jpg"
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Advanced Python tutorial with OOP concepts",
+    "category": "programming",
+    "tags": "python,oop,advanced",
+    "attributes": {
+      "difficulty": "medium",
+      "language": "python",
+      "duration": "45min",
+      "topics": ["classes", "inheritance", "polymorphism"]
+    }
+  }'
 ```
 
 **Response:**
@@ -517,7 +616,7 @@ curl -X POST http://89.106.206.119:8000/api/posts/ \
 {
   "success": true,
   "post": {
-    "id": 2,
+    "id": 56,
     "author": 1,
     "author_info": {
       "id": 1,
@@ -528,24 +627,15 @@ curl -X POST http://89.106.206.119:8000/api/posts/ \
       "is_email_verified": true,
       "followers_count": 15,
       "following_count": 8,
-      "posts_count": 26
+      "posts_count": 27
     },
-    "content": "Check out this amazing sunset! 🌅",
-    "created_at": "2024-01-15T15:45:00Z",
-    "updated_at": "2024-01-15T15:45:00Z",
-    "tags": "sunset,nature",
+    "content": "Advanced Python tutorial with OOP concepts",
+    "created_at": "2024-01-16T09:15:00Z",
+    "updated_at": "2024-01-16T09:15:00Z",
+    "tags": "python,oop,advanced",
     "mentions": [],
-    "media": [
-      {
-        "id": 2,
-        "url": "/media/posts/images/sunset.jpg",
-        "media_type": "image",
-        "caption": "",
-        "order": 0,
-        "file_size": 1567890
-      }
-    ],
-    "category": "photography",
+    "media": [],
+    "category": "programming",
     "parent": null,
     "is_repost": false,
     "original_post": null,
@@ -555,7 +645,13 @@ curl -X POST http://89.106.206.119:8000/api/posts/ \
     "reposts_count": 0,
     "replies_count": 0,
     "user_reaction": null,
-    "is_saved": false
+    "is_saved": false,
+    "attributes": {
+      "difficulty": "medium",
+      "language": "python",
+      "duration": "45min",
+      "topics": ["classes", "inheritance", "polymorphism"]
+    }
   }
 }
 ```
@@ -798,12 +894,17 @@ curl -X DELETE http://89.106.206.119:8000/api/posts/1/delete/ \
 
 ### Update Post
 ```bash
-curl -X PUT http://89.106.206.119:8000/api/posts/1/update/ \
+curl -X PUT http://89.106.206.119:8000/api/posts/56/update/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: application/json" \
   -d '{
-    "content": "Updated content with more details about my project!",
-    "tags": "django,react,webdev,update"
+    "attributes": {
+      "difficulty": "hard",
+      "language": "python",
+      "duration": "60min",
+      "topics": ["classes", "inheritance", "polymorphism", "decorators"],
+      "prerequisites": ["python basics", "functions"]
+    }
   }'
 ```
 
@@ -813,34 +914,37 @@ curl -X PUT http://89.106.206.119:8000/api/posts/1/update/ \
   "success": true,
   "message": "Post updated successfully",
   "post": {
-    "id": 1,
-    "author": {
+    "id": 56,
+    "author": 1,
+    "author_info": {
       "id": 1,
       "username": "johndoe",
-      "profile_picture": "/media/profile_pictures/john.jpg"
+      "first_name": "John",
+      "last_name": "Doe",
+      "profile_picture": "/media/profiles/john.jpg",
+      "is_email_verified": true,
+      "followers_count": 15,
+      "following_count": 8,
+      "posts_count": 27
     },
-    "content": "Updated content with more details about my project!",
-    "category": "tech",
-    "tags": "django,react,webdev,update",
-    "media": [
-      {
-        "id": 1,
-        "url": "/media/posts/project_screenshot.jpg",
-        "media_type": "image",
-        "caption": "",
-        "order": 0,
-        "file_size": 2048576
-      }
-    ],
-    "likes_count": 25,
-    "dislikes_count": 2,
-    "comments_count": 8,
-    "reposts_count": 3,
-    "replies_count": 2,
-    "user_reaction": "like",
-    "is_saved": false,
-    "created_at": "2024-01-15T14:30:00Z",
-    "updated_at": "2024-01-15T18:30:00Z"
+    "content": "Advanced Python tutorial with OOP concepts",
+    "created_at": "2024-01-16T09:15:00Z",
+    "updated_at": "2024-01-16T10:30:00Z",
+    "tags": "python,oop,advanced",
+    "attributes": {
+      "difficulty": "hard",
+      "language": "python",
+      "duration": "60min",
+      "topics": ["classes", "inheritance", "polymorphism", "decorators"],
+      "prerequisites": ["python basics", "functions"]
+    },
+    "likes_count": 0,
+    "dislikes_count": 0,
+    "comments_count": 0,
+    "reposts_count": 0,
+    "replies_count": 0,
+    "user_reaction": null,
+    "is_saved": false
   }
 }
 ```
@@ -1592,6 +1696,255 @@ curl -X DELETE http://89.106.206.119:8000/api/formats/programming/delete/ \
 }
 ```
 
+## 🏦 Wallet Endpoints
+
+### Get User Wallet
+```bash
+curl -X GET http://89.106.206.119:8000/api/wallet/mywallet/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+```
+
+**Successful Response:**
+```json
+{
+  "error": false,
+  "message": "کیف پول با موفقیت دریافت شد",
+  "code": "USER_WALLET_FETCHED",
+  "data": {
+    "id": 1,
+    "user": 1,
+    "balance": 150000,
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T14:30:00Z"
+  }
+}
+```
+
+**Error Response (Wallet Not Found):**
+```json
+{
+  "error": true,
+  "message": "کیف پول یافت نشد",
+  "code": "USER_WALLET_NOT_FOUND"
+}
+```
+
+### Deposit Funds (Increase Balance)
+```bash
+curl -X POST http://89.106.206.119:8000/api/wallet/deposit/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 50000
+  }'
+```
+
+**Successful Response:**
+```json
+{
+  "error": false,
+  "message": "موجودی با موفقیت افزایش یافت",
+  "code": "WALLET_DEPOSIT_SUCCESSFUL",
+  "data": {
+    "transaction_id": 123,
+    "new_balance": 200000,
+    "previous_balance": 150000,
+    "amount": 50000,
+    "timestamp": "2024-01-15T15:30:00Z"
+  }
+}
+```
+
+**Error Responses:**
+
+**Invalid Amount:**
+```json
+{
+  "error": true,
+  "message": "مقدار وارد شده نامعتبر است",
+  "code": "WALLET_INVALID_AMOUNT"
+}
+```
+
+**Server Error:**
+```json
+{
+  "error": true,
+  "message": "خطای داخلی سرور",
+  "code": "SERVER_ERROR"
+}
+```
+
+### Withdraw Funds (Decrease Balance)
+```bash
+curl -X POST http://89.106.206.119:8000/api/wallet/withdraw/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 20000
+  }'
+```
+
+**Successful Response:**
+```json
+{
+  "error": false,
+  "message": "برداشت با موفقیت انجام شد",
+  "code": "WALLET_WITHDRAW_SUCCESSFUL",
+  "data": {
+    "transaction_id": 124,
+    "new_balance": 180000,
+    "previous_balance": 200000,
+    "amount": 20000,
+    "timestamp": "2024-01-15T15:45:00Z"
+  }
+}
+```
+
+**Error Responses:**
+
+**Insufficient Balance:**
+```json
+{
+  "error": true,
+  "message": "موجودی کافی نیست",
+  "code": "INSUFFICIENT_BALANCE"
+}
+```
+
+**Invalid Amount:**
+```json
+{
+  "error": true,
+  "message": "مقدار وارد شده نامعتبر است",
+  "code": "WALLET_INVALID_AMOUNT"
+}
+```
+
+### Transfer Funds to Another User
+```bash
+curl -X POST http://89.106.206.119:8000/api/wallet/transfer/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_user_id": 2,
+    "amount": 30000
+  }'
+```
+
+**Successful Response:**
+```json
+{
+  "error": false,
+  "message": "انتقال با موفقیت انجام شد",
+  "code": "WALLET_TRANSFER_SUCCESSFUL",
+  "data": {
+    "transaction_id": 125,
+    "sender_new_balance": 150000,
+    "receiver_new_balance": 80000,
+    "amount": 30000,
+    "receiver_username": "janedoe",
+    "timestamp": "2024-01-15T16:00:00Z"
+  }
+}
+```
+
+**Error Responses:**
+
+**User Not Found:**
+```json
+{
+  "error": true,
+  "message": "کاربر وارد شده یافت نشد",
+  "code": "USER_NOT_FOUND"
+}
+```
+
+**Insufficient Balance:**
+```json
+{
+  "error": true,
+  "message": "موجودی کافی نیست",
+  "code": "INSUFFICIENT_BALANCE"
+}
+```
+
+**Invalid Amount:**
+```json
+{
+  "error": true,
+  "message": "مقدار وارد شده نامعتبر است",
+  "code": "WALLET_INVALID_AMOUNT"
+}
+```
+
+### Get User Transactions (History)
+```bash
+curl -X GET http://89.106.206.119:8000/api/wallet/transactions/ \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+```
+
+**Successful Response:**
+```json
+{
+  "error": false,
+  "message": "تراکنش های کاربر یافت شد",
+  "code": "USER_TRANSACTION_FETCHED",
+  "data": [
+    {
+      "id": 123,
+      "wallet": 1,
+      "amount": 50000,
+      "transaction_type": "deposit",
+      "status": "completed",
+      "description": "افزایش موجودی",
+      "related_user": null,
+      "registered_in": "2024-01-15T15:30:00Z"
+    },
+    {
+      "id": 124,
+      "wallet": 1,
+      "amount": 20000,
+      "transaction_type": "withdraw",
+      "status": "completed",
+      "description": "برداشت وجه",
+      "related_user": null,
+      "registered_in": "2024-01-15T15:45:00Z"
+    },
+    {
+      "id": 125,
+      "wallet": 1,
+      "amount": 30000,
+      "transaction_type": "transfer",
+      "status": "completed",
+      "description": "انتقال به janedoe",
+      "related_user": 2,
+      "registered_in": "2024-01-15T16:00:00Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+**Wallet Not Found:**
+```json
+{
+  "error": true,
+  "message": "کیف پول یافت نشد",
+  "code": "USER_WALLET_NOT_FOUND"
+}
+```
+
+**No Transactions:**
+```json
+{
+  "error": true,
+  "message": "تراکنشی وجود ندارد",
+  "code": "USER_TRANSACTION_NOT_EXIST"
+}
+```
+
 ## ⚠️ Error Responses
 
 ### Format Not Found
@@ -1633,8 +1986,6 @@ curl -X DELETE http://89.106.206.119:8000/api/formats/programming/delete/ \
   "message": "Category is required"
 }
 ```
-
-
 
 ### Validation Error
 ```json
