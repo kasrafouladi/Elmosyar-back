@@ -105,7 +105,7 @@ class WalletService:
     
     @staticmethod
     @transaction.atomic
-    def transfer(from_user, to_user, amount):
+    def purchase_or_transfer(from_user, to_user, amount, is_purchase=False):
         try:
             wallets = (UserWallet.objects.select_for_update().filter(user_id__in=sorted([from_user, to_user])))
             sender_wallet = next(w for w in wallets if w.user_id == from_user.id)
@@ -137,6 +137,8 @@ class WalletService:
                 from_user=from_user,
                 to_user=to_user
             )
+            if is_purchase:
+                return f"خرید با موفقیت انجام شد", "PURCHASE_SUCCESS", {"balance" : sender_wallet.balance}
             
             return f"مبلغ {amount} با موفقیت منتقل شد", "TRANSFER_SUCCESS", {"balance" : sender_wallet.balance}
         

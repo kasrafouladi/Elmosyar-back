@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import UserWallet, Transaction, WalletService, WalletError, InsufficientBalance
 from .serializer import UserWalletSerializer, TransactionSerializer
 from rest_framework import status
+from posts.models import Post, PostMedia
 
 User = get_user_model()
 
@@ -79,7 +80,7 @@ def transfer(request):
                          "message": "کاربر وارد شده یافت نشد",
                          "code": "USER_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
         
-    return wallet_service_handler(WalletService.transfer, request.user, to_user, amount)
+    return wallet_service_handler(WalletService.purchase_or_transfer, request.user, to_user, amount)
 
 
 @api_view(['GET'])
@@ -103,3 +104,25 @@ def user_transactions(request):
                      "message": "تراکنش های کاربر یافت شد",
                      "code": "USER_TRANSACTION_FETCHED",
                      "data": serializer.data}, status=status.HTTP_200_OK)
+    
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def purchase(request, post_id):
+
+    try:
+        post = Post.objects.get(pk=post_id)
+    except Post.DoesNotExist:
+        return Response({"error": True,
+                         "message": "پست مورد نظر یافت نشد",
+                         "code": "POST_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+    price = post.attributes.get('price')
+    if price is None:
+        return Response({"error": True,
+                         "message": "قیمت یافت نشد",
+                         "code": "POST_PRICE_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+    price = int(price)
+    
+    return wallet_service_handler(WalletService.purchase_or_transfer, request.user, post.author, price, True)
