@@ -1,5 +1,4 @@
 from django.shortcuts import render
-from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,9 +6,9 @@ from .models import UserWallet, Transaction, WalletService, WalletError, Insuffi
 from .serializer import UserWalletSerializer, TransactionSerializer
 from rest_framework import status
 from posts.models import Post, PostMedia
+from django.conf import settings
 
-User = get_user_model()
-
+User = settings.AUTH_USER_MODEL
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
