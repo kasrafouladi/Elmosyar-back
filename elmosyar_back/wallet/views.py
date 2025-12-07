@@ -39,7 +39,7 @@ def wallet_service_handler(service, *args, **kwargs):
     except InsufficientBalance as e:
         return Response({"error": True,
                          "message": str(e),
-                         "code": "INSUFFICIENT_BALANCE"}, status=status.HTTP_400_BAD_REQUEST)
+                         "code": "INSUFFICIENT_BALANCE"}, status=status.HTTP_409_CONFLICT)
         
     except WalletError as e:
         return Response({"error": True,
@@ -120,12 +120,12 @@ def purchase(request, post_id):
     if post.author.id == request.user.id:
         return Response({"error": True,
                          "message": "امکان خرید توسط فروشنده وجود ندارد",
-                         "code": "POST_PURCHASE_NOT_ALLOWED"}, status=status.HTTP_400_BAD_REQUEST)
+                         "code": "POST_PURCHASE_NOT_ALLOWED"}, status=status.HTTP_409_CONFLICT)
         
     if post.attributes.get('is_sold'):
         return Response({"error": True,
                          "message": "این آیتم قبلا به فروش رفته است",
-                         "code": "POST_SOLD"}, status=status.HTTP_400_BAD_REQUEST)
+                         "code": "POST_SOLD"}, status=status.HTTP_410_GONE)
         
     price = post.attributes.get('price')
     if price is None:
