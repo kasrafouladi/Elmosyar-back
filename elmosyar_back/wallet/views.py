@@ -122,7 +122,7 @@ def purchase(request, post_id):
                          "message": "امکان خرید توسط فروشنده وجود ندارد",
                          "code": "POST_PURCHASE_NOT_ALLOWED"}, status=status.HTTP_409_CONFLICT)
         
-    if post.attributes.get('is_sold'):
+    if post.attributes.get('isSoldOut'):
         return Response({"error": True,
                          "message": "این آیتم قبلا به فروش رفته است",
                          "code": "POST_SOLD"}, status=status.HTTP_410_GONE)
