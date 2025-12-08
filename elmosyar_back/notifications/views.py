@@ -3,12 +3,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.core.paginator import Paginator
-import logging
 
 from .models import Notification
 from .serializers import NotificationSerializer
 
-logger = logging.getLogger(__name__)
+# جایگزین کردن لاگر قدیمی
+from log_manager.log_config import log_info, log_error, log_warning
 
 # ════════════════════════════════════════════════════════════
 # 🔔 Notification Endpoints
@@ -32,6 +32,9 @@ def notifications_list(request):
         notifications_page = paginator.page(1)
     
     serializer = NotificationSerializer(notifications_page, many=True, context={'request': request})
+    
+    # لاگ کردن دسترسی
+    log_info(f"User viewed notifications page {page}", request)
     
     return Response({
         'success': True,
@@ -57,20 +60,22 @@ def notifications_mark_read(request):
     try:
         if not ids:
             # Mark all as read
-            Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+            updated_count = Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+            log_info(f"User marked all notifications as read ({updated_count} notifications)", request)
         else:
             # Mark specific notifications as read
-            Notification.objects.filter(
+            updated_count = Notification.objects.filter(
                 recipient=request.user,
                 id__in=ids
             ).update(is_read=True)
+            log_info(f"User marked {updated_count} specific notifications as read", request, {'ids': ids})
         
         return Response({
             'success': True,
             'message': 'Notifications marked as read'
         }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Mark notifications as read failed: {str(e)}")
+        log_error(f"Mark notifications as read failed: {str(e)}", request, {'ids': ids})
         return Response({
             'success': False,
             'message': 'Failed to mark notifications as read'

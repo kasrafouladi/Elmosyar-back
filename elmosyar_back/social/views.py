@@ -6,8 +6,6 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import F
 from django.core.paginator import Paginator
-import logging
-
 
 from accounts.serializers import UserSerializer
 from .models import UserFollow
@@ -15,7 +13,8 @@ from notifications.models import Notification
 
 import settings
 
-logger = logging.getLogger(__name__)
+# جایگزین کردن لاگر قدیمی
+from log_manager.log_config import log_info, log_error, log_warning, log_audit
 
 # ════════════════════════════════════════════════════════════
 # 🤝 Social Endpoints
@@ -30,12 +29,14 @@ def follow_user(request, username):
             user_to_follow = get_object_or_404(settings.AUTH_USER_MODEL, username=username)
             
             if user_to_follow == request.user:
+                log_warning(f"User attempted to follow themselves", request)
                 return Response({
                     'success': False,
                     'message': 'You cannot follow yourself'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if request.user.following.filter(id=user_to_follow.id).exists():
+                log_warning(f"User attempted to follow already followed user", request, {'target_user': username})
                 return Response({
                     'success': False,
                     'message': f'You are already following {username}'
@@ -63,6 +64,11 @@ def follow_user(request, username):
             # Refresh user to get updated counts
             user_to_follow.refresh_from_db()
             
+            log_audit(f"User followed {username}", request, {
+                'target_user_id': user_to_follow.id,
+                'new_followers_count': user_to_follow.followers_count
+            })
+            
             return Response({
                 'success': True,
                 'message': f'You are now following {username}',
@@ -70,7 +76,7 @@ def follow_user(request, username):
             }, status=status.HTTP_200_OK)
             
     except Exception as e:
-        logger.error(f"Follow operation failed: {str(e)}")
+        log_error(f"Follow operation failed: {str(e)}", request, {'target_user': username})
         return Response({
             'success': False,
             'message': 'Follow operation failed'
@@ -91,6 +97,7 @@ def unfollow_user(request, username):
             ).first()
             
             if not follow_relation:
+                log_warning(f"User attempted to unfollow non-followed user", request, {'target_user': username})
                 return Response({
                     'success': False,
                     'message': f'You are not following {username}'
@@ -109,6 +116,11 @@ def unfollow_user(request, username):
             # Refresh user to get updated counts
             user_to_unfollow.refresh_from_db()
             
+            log_audit(f"User unfollowed {username}", request, {
+                'target_user_id': user_to_unfollow.id,
+                'new_followers_count': user_to_unfollow.followers_count
+            })
+            
             return Response({
                 'success': True,
                 'message': f'You have unfollowed {username}',
@@ -116,7 +128,7 @@ def unfollow_user(request, username):
             }, status=status.HTTP_200_OK)
             
     except Exception as e:
-        logger.error(f"Unfollow operation failed: {str(e)}")
+        log_error(f"Unfollow operation failed: {str(e)}", request, {'target_user': username})
         return Response({
             'success': False,
             'message': 'Unfollow operation failed'
@@ -139,6 +151,12 @@ def user_followers(request, username):
         followers_page = paginator.page(page)
     except:
         followers_page = paginator.page(1)
+    
+    log_info(f"Followers list viewed for {username} page {page}", request, {
+        'target_user': username,
+        'total_followers': paginator.count,
+        'page': page
+    })
     
     # Extract user objects from follow relationships
     follower_users = [follow.follower for follow in followers_page]
@@ -175,6 +193,12 @@ def user_following(request, username):
     except:
         following_page = paginator.page(1)
     
+    log_info(f"Following list viewed for {username} page {page}", request, {
+        'target_user': username,
+        'total_following': paginator.count,
+        'page': page
+    })
+    
     # Extract user objects from follow relationships
     following_users = [follow.following for follow in following_page]
     serializer = UserSerializer(following_users, many=True, context={'request': request})
@@ -191,4 +215,3 @@ def user_following(request, username):
             'has_previous': following_page.has_previous(),
         }
     }, status=status.HTTP_200_OK)
-

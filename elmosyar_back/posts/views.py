@@ -6,7 +6,6 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
-import logging
 import json
 import mimetypes
 import re
@@ -20,7 +19,8 @@ from interactions.models import Comment
 from interactions.serializers import CommentSerializer
 from accounts.serializers import UserSerializer
 
-logger = logging.getLogger(__name__)
+# جایگزین کردن لاگر قدیمی
+from log_manager.log_config import log_info, log_error, log_warning, log_audit, log_api_request
 
 MAX_POST_CONTENT_LENGTH = 5000
 MAX_MEDIA_FILE_SIZE = 10 * 1024 * 1024
@@ -56,7 +56,7 @@ def apply_advanced_search_filter(queryset, search_json, category):
             with open(format_obj.format_file.path, 'r', encoding='utf-8') as f:
                 format_data = json.load(f)
         except Exception as e:
-            logger.error(f"Error reading format file: {str(e)}")
+            log_error(f"Error reading format file: {str(e)}")
             raise ValidationError('Error reading format file')
         
         # فیلتر کردن پست‌ها بر اساس معیارهای جستجو
@@ -83,7 +83,7 @@ def apply_advanced_search_filter(queryset, search_json, category):
                         match_all_criteria = False
                         break
                 except re.error:
-                    logger.error(f"Invalid regex pattern in format for key {key}: {format_data[key]}")
+                    log_error(f"Invalid regex pattern in format for key {key}: {format_data[key]}")
                     match_all_criteria = False
                     break
                 
@@ -94,22 +94,30 @@ def apply_advanced_search_filter(queryset, search_json, category):
                             match_all_criteria = False
                             break
                     except re.error:
-                        logger.error(f"Invalid regex pattern in search for key {key}: {regex_pattern}")
+                        log_error(f"Invalid regex pattern in search for key {key}: {regex_pattern}")
                         match_all_criteria = False
                         break
             
             if match_all_criteria:
                 filtered_posts.append(post.id)
         
+        log_info(f"Advanced search applied: {len(filtered_posts)} posts matched", None, {
+            'category': category,
+            'search_criteria': search_criteria,
+            'matched_posts': len(filtered_posts)
+        })
+        
         # فیلتر کردن پست‌ها بر اساس IDهای فیلتر شده
         return queryset.filter(id__in=filtered_posts)
         
     except json.JSONDecodeError:
+        log_warning(f"Invalid JSON in advanced search: {search_json}")
         raise ValidationError('Invalid JSON in search parameter')
     except ValidationError as e:
+        log_warning(f"Advanced search validation error: {str(e)}")
         raise e
     except Exception as e:
-        logger.error(f"Advanced search error: {str(e)}")
+        log_error(f"Advanced search error: {str(e)}")
         raise ValidationError('Error in advanced search')
 
 
@@ -132,11 +140,12 @@ def validate_post_attributes(attributes, category):
             if key in format_data:
                 # اعتبارسنجی با regex فرمت
                 if not re.match(format_data[key], str(value)):
+                    log_warning(f"Attribute validation failed: {key}={value} doesn't match pattern")
                     return False, f'Attribute "{key}" does not match format pattern'
         
         return True, None
     except Exception as e:
-        logger.error(f"Format validation error: {str(e)}")
+        log_error(f"Format validation error: {str(e)}", None, {'category': category})
         return False, f'Error validating format: {str(e)}'
 
 
@@ -164,16 +173,21 @@ def validate_post_update_attributes(post, attributes, category):
                 if key in format_data:
                     # اعتبارسنجی با regex فرمت
                     if not re.match(format_data[key], str(value)):
+                        log_warning(f"Update attribute validation failed: {key}={value}")
                         return False, f'Attribute "{key}" does not match format pattern'
             
             # بررسی کلیدهای اجباری در فرمت
             for key, pattern in format_data.items():
                 if key not in merged_attributes:
+                    log_warning(f"Required attribute missing: {key}")
                     return False, f'Attribute "{key}" is required and cannot be removed'
         
         return True, None
     except Exception as e:
-        logger.error(f"Format validation error for update: {str(e)}")
+        log_error(f"Format validation error for update: {str(e)}", None, {
+            'post_id': post.id,
+            'category': category
+        })
         return False, f'Error validating format: {str(e)}'
 
 
@@ -209,6 +223,7 @@ def posts_list_create(request):
             try:
                 posts = apply_advanced_search_filter(posts, search_json, category)
             except ValidationError as e:
+                log_warning(f"Advanced search validation error: {str(e)}", request)
                 return Response({
                     'success': False,
                     'message': str(e)
@@ -225,6 +240,15 @@ def posts_list_create(request):
             posts_page = paginator.page(page)
         except:
             posts_page = paginator.page(1)
+        
+        log_api_request(f"Posts list retrieved", request, {
+            'category': category,
+            'username': username,
+            'has_search': bool(search_json),
+            'page': page,
+            'per_page': per_page,
+            'total_posts': paginator.count
+        })
         
         serializer = PostSerializer(posts_page, many=True, context={'request': request})
         
@@ -253,12 +277,16 @@ def posts_list_create(request):
 
             # Validation
             if not content and not request.FILES and not attributes:
+                log_warning("Post creation attempt without content, media or attributes", request)
                 return Response({
                     'success': False,
                     'message': 'Post content, media or attributes required'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             if len(content) > MAX_POST_CONTENT_LENGTH:
+                log_warning(f"Post content too long: {len(content)} characters", request, {
+                    'max_allowed': MAX_POST_CONTENT_LENGTH
+                })
                 return Response({
                     'success': False,
                     'message': f'Post content is too long (max {MAX_POST_CONTENT_LENGTH} characters)'
@@ -270,6 +298,7 @@ def posts_list_create(request):
 
             # Category is required for main posts
             if not parent and not category:
+                log_warning("Post creation without category for main post", request)
                 return Response({
                     'success': False,
                     'message': 'Room/Category is required'
@@ -279,6 +308,10 @@ def posts_list_create(request):
             if attributes and category:
                 is_valid, error_message = validate_post_attributes(attributes, category)
                 if not is_valid:
+                    log_warning(f"Post attributes validation failed: {error_message}", request, {
+                        'category': category,
+                        'attributes': attributes
+                    })
                     return Response({
                         'success': False,
                         'message': error_message
@@ -307,8 +340,12 @@ def posts_list_create(request):
                             post=post,
                             message=f'{request.user.username} mentioned you in a post'
                         )
+                log_info(f"Post mentions added: {len(mentioned_users)} users", request, {
+                    'mentioned_users': usernames
+                })
 
             # Handle media files
+            media_files = []
             for f in request.FILES.getlist('media'):
                 # Validate file type
                 ctype = f.content_type or mimetypes.guess_type(f.name)[0] or ''
@@ -323,9 +360,29 @@ def posts_list_create(request):
                 
                 # Validate file size
                 if f.size > MAX_MEDIA_FILE_SIZE:
+                    log_warning(f"Media file too large: {f.size} bytes, skipping", request, {
+                        'filename': f.name,
+                        'max_allowed': MAX_MEDIA_FILE_SIZE
+                    })
                     continue  # Skip large files
                     
                 PostMedia.objects.create(post=post, file=f, media_type=mtype)
+                media_files.append({
+                    'filename': f.name,
+                    'size': f.size,
+                    'type': mtype
+                })
+
+            log_audit(f"Post created successfully", request, {
+                'post_id': post.id,
+                'category': category,
+                'has_media': len(media_files) > 0,
+                'media_count': len(media_files),
+                'has_parent': parent is not None,
+                'parent_id': parent.id if parent else None,
+                'has_attributes': bool(attributes),
+                'content_length': len(content)
+            })
 
             serializer = PostSerializer(post, context={'request': request})
             return Response({
@@ -334,7 +391,10 @@ def posts_list_create(request):
             }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        logger.error(f"Post creation failed: {str(e)}")
+        log_error(f"Post creation failed: {str(e)}", request, {
+            'category': category if 'category' in locals() else None,
+            'has_media': bool(request.FILES)
+        })
         return Response({
             'success': False,
             'message': 'Failed to create post'
@@ -345,32 +405,45 @@ def posts_list_create(request):
 @permission_classes([IsAuthenticated])
 def post_detail(request, post_id):
     """Get single post details with comments and replies"""
-    post = get_object_or_404(
-        Post.objects.select_related('author')
-        .prefetch_related('media', 'mentions', 'reactions', 'saved_by'),
-        id=post_id
-    )
-    
-    # Get post data
-    post_serializer = PostSerializer(post, context={'request': request})
-    data = post_serializer.data
-    
-    # Get comments with optimization
-    comments = Comment.objects.filter(post=post).select_related('user').prefetch_related('likes').order_by('created_at')
-    comment_serializer = CommentSerializer(comments, many=True, context={'request': request})
-    data['comments'] = comment_serializer.data
-    
-    # Get replies with optimization
-    replies = Post.objects.filter(parent=post).select_related('author').prefetch_related(
-        'media', 'mentions', 'reactions'
-    ).order_by('created_at')
-    reply_serializer = PostSerializer(replies, many=True, context={'request': request})
-    data['replies'] = reply_serializer.data
-    
-    return Response({
-        'success': True,
-        'post': data
-    }, status=status.HTTP_200_OK)
+    try:
+        post = get_object_or_404(
+            Post.objects.select_related('author')
+            .prefetch_related('media', 'mentions', 'reactions', 'saved_by'),
+            id=post_id
+        )
+        
+        log_info(f"Post details viewed", request, {
+            'post_id': post_id,
+            'author': post.author.username,
+            'category': post.category
+        })
+        
+        # Get post data
+        post_serializer = PostSerializer(post, context={'request': request})
+        data = post_serializer.data
+        
+        # Get comments with optimization
+        comments = Comment.objects.filter(post=post).select_related('user').prefetch_related('likes').order_by('created_at')
+        comment_serializer = CommentSerializer(comments, many=True, context={'request': request})
+        data['comments'] = comment_serializer.data
+        
+        # Get replies with optimization
+        replies = Post.objects.filter(parent=post).select_related('author').prefetch_related(
+            'media', 'mentions', 'reactions'
+        ).order_by('created_at')
+        reply_serializer = PostSerializer(replies, many=True, context={'request': request})
+        data['replies'] = reply_serializer.data
+        
+        return Response({
+            'success': True,
+            'post': data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        log_error(f"Post detail retrieval failed: {str(e)}", request, {'post_id': post_id})
+        return Response({
+            'success': False,
+            'message': 'Failed to get post details'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['DELETE'])
@@ -382,18 +455,34 @@ def delete_post(request, post_id):
             post = get_object_or_404(Post, id=post_id)
             
             if post.author != request.user:
+                log_warning(f"User attempted to delete another user's post", request, {
+                    'post_id': post_id,
+                    'post_author': post.author.username
+                })
                 return Response({
                     'success': False,
                     'message': 'You can only delete your own posts'
                 }, status=status.HTTP_403_FORBIDDEN)
             
+            post_category = post.category
+            post_author = post.author.username
+            has_media = post.media.exists()
+            
             post.delete()
+            
+            log_audit(f"Post deleted", request, {
+                'post_id': post_id,
+                'category': post_category,
+                'author': post_author,
+                'had_media': has_media
+            })
+            
             return Response({
                 'success': True,
                 'message': 'Post deleted successfully'
             }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Post deletion failed: {str(e)}")
+        log_error(f"Post deletion failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to delete post'
@@ -409,6 +498,10 @@ def update_post(request, post_id):
             post = get_object_or_404(Post, id=post_id)
             
             if post.author != request.user:
+                log_warning(f"User attempted to edit another user's post", request, {
+                    'post_id': post_id,
+                    'post_author': post.author.username
+                })
                 return Response({
                     'success': False,
                     'message': 'You can only edit your own posts'
@@ -425,6 +518,10 @@ def update_post(request, post_id):
                 current_category = category or post.category
                 is_valid, error_message = validate_post_update_attributes(post, attributes, current_category)
                 if not is_valid:
+                    log_warning(f"Post update validation failed: {error_message}", request, {
+                        'post_id': post_id,
+                        'category': current_category
+                    })
                     return Response({
                         'success': False,
                         'message': error_message
@@ -434,13 +531,35 @@ def update_post(request, post_id):
             serializer = PostSerializer(post, data=request.data, partial=True, context={'request': request})
             
             if serializer.is_valid():
+                old_content = post.content
+                old_category = post.category
+                
                 serializer.save()
+                
+                changes = {}
+                if content and content != old_content:
+                    changes['content_changed'] = True
+                if category and category != old_category:
+                    changes['category_changed'] = True
+                if attributes:
+                    changes['attributes_updated'] = True
+                
+                log_audit(f"Post updated", request, {
+                    'post_id': post_id,
+                    **changes,
+                    'new_category': category or post.category
+                })
+                
                 return Response({
                     'success': True,
                     'message': 'Post updated successfully',
                     'post': serializer.data
                 }, status=status.HTTP_200_OK)
             else:
+                log_warning(f"Post update validation failed", request, {
+                    'post_id': post_id,
+                    'errors': serializer.errors
+                })
                 return Response({
                     'success': False,
                     'message': 'Validation failed',
@@ -448,7 +567,7 @@ def update_post(request, post_id):
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
     except Exception as e:
-        logger.error(f"Post update failed: {str(e)}")
+        log_error(f"Post update failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to update post'
@@ -465,6 +584,7 @@ def post_repost(request, post_id):
             
             # Check if user is reposting their own post
             if original_post.author == request.user:
+                log_warning(f"User attempted to repost their own post", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': 'You cannot repost your own post'
@@ -478,6 +598,7 @@ def post_repost(request, post_id):
             ).exists()
             
             if existing_repost:
+                log_warning(f"User attempted to repost same post again", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': 'You have already reposted this post'
@@ -506,6 +627,13 @@ def post_repost(request, post_id):
                 message=f'{request.user.username} reposted your post'
             )
             
+            log_audit(f"Post reposted", request, {
+                'original_post_id': post_id,
+                'repost_id': new_post.id,
+                'original_author': original_post.author.username,
+                'category': original_post.category
+            })
+            
             serializer = PostSerializer(new_post, context={'request': request})
             
             return Response({
@@ -513,7 +641,7 @@ def post_repost(request, post_id):
                 'post': serializer.data
             }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        logger.error(f"Repost failed: {str(e)}")
+        log_error(f"Repost failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to repost'
@@ -539,6 +667,13 @@ def posts_by_category(request, category_id):
         posts_page = paginator.page(page)
     except:
         posts_page = paginator.page(1)
+    
+    log_api_request(f"Posts by category viewed", request, {
+        'category': category_id,
+        'page': page,
+        'per_page': per_page,
+        'total_posts': paginator.count
+    })
     
     serializer = PostSerializer(posts_page, many=True, context={'request': request})
     
@@ -579,6 +714,13 @@ def user_posts(request, username):
     except:
         posts_page = paginator.page(1)
     
+    log_api_request(f"User posts viewed", request, {
+        'target_user': username,
+        'page': page,
+        'per_page': per_page,
+        'total_posts': paginator.count
+    })
+    
     user_serializer = UserSerializer(user, context={'request': request})
     posts_serializer = PostSerializer(posts_page, many=True, context={'request': request})
     
@@ -602,26 +744,39 @@ def user_posts(request, username):
 @permission_classes([AllowAny])
 def post_thread(request, post_id):
     """Get post thread (post with all its replies)"""
-    post = get_object_or_404(
-        Post.objects.select_related('author').prefetch_related('media', 'mentions'),
-        id=post_id
-    )
-    
-    # Get post data
-    post_serializer = PostSerializer(post, context={'request': request})
-    data = post_serializer.data
-    
-    # Get replies with optimization
-    replies = post.replies.select_related('author').prefetch_related(
-        'media', 'mentions', 'reactions'
-    ).order_by('created_at')
-    replies_serializer = PostSerializer(replies, many=True, context={'request': request})
-    data['replies'] = replies_serializer.data
-    
-    return Response({
-        'success': True,
-        'thread': data
-    }, status=status.HTTP_200_OK)
+    try:
+        post = get_object_or_404(
+            Post.objects.select_related('author').prefetch_related('media', 'mentions'),
+            id=post_id
+        )
+        
+        log_api_request(f"Post thread viewed", request, {
+            'post_id': post_id,
+            'author': post.author.username,
+            'category': post.category
+        })
+        
+        # Get post data
+        post_serializer = PostSerializer(post, context={'request': request})
+        data = post_serializer.data
+        
+        # Get replies with optimization
+        replies = post.replies.select_related('author').prefetch_related(
+            'media', 'mentions', 'reactions'
+        ).order_by('created_at')
+        replies_serializer = PostSerializer(replies, many=True, context={'request': request})
+        data['replies'] = replies_serializer.data
+        
+        return Response({
+            'success': True,
+            'thread': data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        log_error(f"Post thread retrieval failed: {str(e)}", request, {'post_id': post_id})
+        return Response({
+            'success': False,
+            'message': 'Failed to get post thread'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -633,6 +788,7 @@ def save_post(request, post_id):
             post = get_object_or_404(Post, id=post_id)
             
             if post.saved_by.filter(id=request.user.id).exists():
+                log_warning(f"User attempted to save already saved post", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': 'Post already saved'
@@ -640,12 +796,18 @@ def save_post(request, post_id):
             
             post.saved_by.add(request.user)
             
+            log_audit(f"Post saved", request, {
+                'post_id': post_id,
+                'author': post.author.username,
+                'category': post.category
+            })
+            
             return Response({
                 'success': True,
                 'message': 'Post saved successfully'
             }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Save post failed: {str(e)}")
+        log_error(f"Save post failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to save post'
@@ -661,6 +823,7 @@ def unsave_post(request, post_id):
             post = get_object_or_404(Post, id=post_id)
             
             if not post.saved_by.filter(id=request.user.id).exists():
+                log_warning(f"User attempted to unsave non-saved post", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': 'Post not saved'
@@ -668,12 +831,18 @@ def unsave_post(request, post_id):
             
             post.saved_by.remove(request.user)
             
+            log_audit(f"Post unsaved", request, {
+                'post_id': post_id,
+                'author': post.author.username,
+                'category': post.category
+            })
+            
             return Response({
                 'success': True,
                 'message': 'Post unsaved successfully'
             }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Unsave post failed: {str(e)}")
+        log_error(f"Unsave post failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to unsave post'
@@ -696,6 +865,12 @@ def saved_posts(request):
         saved_posts_page = paginator.page(page)
     except:
         saved_posts_page = paginator.page(1)
+    
+    log_info(f"Saved posts viewed", request, {
+        'page': page,
+        'per_page': per_page,
+        'total_saved': paginator.count
+    })
     
     serializer = PostSerializer(saved_posts_page, many=True, context={'request': request})
     
@@ -722,6 +897,7 @@ def saved_posts(request):
 def upload_category_format(request):
     """آپلود فایل فرمت برای یک دسته‌بندی (فقط سوپر یوزرها)"""
     if not request.user.is_superuser:
+        log_warning(f"Non-superuser attempted to upload format file", request)
         return Response({
             'success': False,
             'message': 'Only superusers can upload format files'
@@ -732,12 +908,14 @@ def upload_category_format(request):
         format_file = request.FILES.get('format_file')
 
         if not category:
+            log_warning(f"Format upload without category", request)
             return Response({
                 'success': False,
                 'message': 'Category is required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         if not format_file:
+            log_warning(f"Format upload without file", request)
             return Response({
                 'success': False,
                 'message': 'Format file is required'
@@ -745,6 +923,7 @@ def upload_category_format(request):
 
         # بررسی نوع فایل
         if not format_file.name.endswith('.json'):
+            log_warning(f"Non-JSON file upload attempt: {format_file.name}", request)
             return Response({
                 'success': False,
                 'message': 'Only JSON files are allowed'
@@ -753,9 +932,10 @@ def upload_category_format(request):
         # بررسی valid بودن JSON
         try:
             format_file.seek(0)
-            json.load(format_file)
+            format_data = json.load(format_file)
             format_file.seek(0)  # بازگشت به ابتدای فایل
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            log_warning(f"Invalid JSON file: {str(e)}", request)
             return Response({
                 'success': False,
                 'message': 'Invalid JSON file'
@@ -770,6 +950,14 @@ def upload_category_format(request):
             }
         )
 
+        log_audit(f"Category format uploaded/updated", request, {
+            'category': category,
+            'created': created,
+            'format_id': format_obj.id,
+            'file_size': format_file.size,
+            'keys_count': len(format_data.keys()) if format_data else 0
+        })
+
         serializer = CategoryFormatSerializer(format_obj, context={'request': request})
         
         return Response({
@@ -779,7 +967,7 @@ def upload_category_format(request):
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        logger.error(f"Format upload failed: {str(e)}")
+        log_error(f"Format upload failed: {str(e)}", request)
         return Response({
             'success': False,
             'message': 'Failed to upload format'
@@ -791,6 +979,7 @@ def upload_category_format(request):
 def delete_category_format(request, cat):
     """حذف فایل فرمت یک دسته‌بندی (فقط سوپر یوزرها)"""
     if not request.user.is_superuser:
+        log_warning(f"Non-superuser attempted to delete format file", request, {'category': cat})
         return Response({
             'success': False,
             'message': 'Only superusers can delete format files'
@@ -800,6 +989,7 @@ def delete_category_format(request, cat):
         format_obj = CategoryFormat.objects.filter(category=cat).first()
         
         if not format_obj:
+            log_warning(f"Attempt to delete non-existent format", request, {'category': cat})
             return Response({
                 'success': False,
                 'message': f'No format found for category: {cat}'
@@ -807,13 +997,15 @@ def delete_category_format(request, cat):
 
         format_obj.delete()
         
+        log_audit(f"Category format deleted", request, {'category': cat})
+        
         return Response({
             'success': True,
             'message': 'Format deleted successfully'
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"Format deletion failed: {str(e)}")
+        log_error(f"Format deletion failed: {str(e)}", request, {'category': cat})
         return Response({
             'success': False,
             'message': 'Failed to delete format'
@@ -828,6 +1020,7 @@ def get_format(request, cat):
         format_obj = CategoryFormat.objects.filter(category=cat).first()
         
         if not format_obj or not format_obj.format_file:
+            log_warning(f"Format requested for non-existent category", request, {'category': cat})
             return Response({
                 'success': False,
                 'message': f'No format found for category: {cat}'
@@ -838,11 +1031,17 @@ def get_format(request, cat):
             with open(format_obj.format_file.path, 'r', encoding='utf-8') as f:
                 format_data = json.load(f)
         except Exception as e:
-            logger.error(f"Error reading format file: {str(e)}")
+            log_error(f"Error reading format file: {str(e)}", request, {'category': cat})
             return Response({
                 'success': False,
                 'message': 'Error reading format file'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        log_info(f"Format file retrieved", request, {
+            'category': cat,
+            'keys_count': len(format_data.keys()) if format_data else 0,
+            'last_updated': format_obj.updated_at
+        })
 
         return Response({
             'success': True,
@@ -852,7 +1051,7 @@ def get_format(request, cat):
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(f"Get format failed: {str(e)}")
+        log_error(f"Get format failed: {str(e)}", request, {'category': cat})
         return Response({
             'success': False,
             'message': 'Failed to get format'
@@ -868,5 +1067,5 @@ def get_format_data(cat):
                 return json.load(f)
         return None
     except Exception as e:
-        logger.error(f"Error in get_format_data for {cat}: {str(e)}")
+        log_error(f"Error in get_format_data for {cat}: {str(e)}")
         return None

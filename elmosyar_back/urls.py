@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/', include('messaging.urls')),
     path('api/wallet/', include('wallet.urls')),
+    path('api/logs/', include('log_manager.urls')),
 ]
 
 if settings.DEBUG:

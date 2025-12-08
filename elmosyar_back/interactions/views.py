@@ -4,7 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-import logging
 
 from posts.models import Post
 from .models import Reaction, Comment
@@ -13,7 +12,8 @@ from notifications.models import Notification
 
 import settings
 
-logger = logging.getLogger(__name__)
+# جایگزین کردن لاگر قدیمی
+from log_manager.log_config import log_info, log_error, log_warning, log_audit
 
 MAX_COMMENT_CONTENT_LENGTH = 1000
 
@@ -25,6 +25,10 @@ def _handle_post_reaction(request, post_id, reaction_type):
             post = get_object_or_404(Post, id=post_id)
             
             if post.author == request.user:
+                log_warning(f"User tried to {reaction_type} their own post", request, {
+                    'post_id': post_id,
+                    'reaction_type': reaction_type
+                })
                 return {
                     'success': False,
                     'message': f'You cannot {reaction_type} your own post'
@@ -37,6 +41,7 @@ def _handle_post_reaction(request, post_id, reaction_type):
                 existing_reaction.delete()
                 action = f'un{reaction_type}d'
                 user_reaction = None
+                log_info(f"User removed {reaction_type} from post {post_id}", request)
             else:
                 # Add/change reaction
                 if existing_reaction:
@@ -56,6 +61,9 @@ def _handle_post_reaction(request, post_id, reaction_type):
                 
                 action = f'{reaction_type}d'
                 user_reaction = reaction_type
+                log_info(f"User {reaction_type}d post {post_id}", request, {
+                    'post_author': post.author.username
+                })
             
             # Get updated counts
             likes_count = post.reactions.filter(reaction='like').count()
@@ -70,7 +78,10 @@ def _handle_post_reaction(request, post_id, reaction_type):
             }, status.HTTP_200_OK
             
     except Exception as e:
-        logger.error(f"Reaction handling failed: {str(e)}")
+        log_error(f"Reaction handling failed: {str(e)}", request, {
+            'post_id': post_id,
+            'reaction_type': reaction_type
+        })
         return {
             'success': False,
             'message': 'Reaction operation failed'
@@ -105,12 +116,14 @@ def post_comment(request, post_id):
             parent_id = request.data.get('parent')
             
             if not content:
+                log_warning("Attempt to post empty comment", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': 'Comment content required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if len(content) > MAX_COMMENT_CONTENT_LENGTH:
+                log_warning(f"Comment too long: {len(content)} characters", request, {'post_id': post_id})
                 return Response({
                     'success': False,
                     'message': f'Comment is too long (max {MAX_COMMENT_CONTENT_LENGTH} characters)'
@@ -149,6 +162,13 @@ def post_comment(request, post_id):
                     message=f'{request.user.username} replied to your comment'
                 )
             
+            log_info(f"User commented on post {post_id}", request, {
+                'post_id': post_id,
+                'comment_id': comment.id,
+                'is_reply': parent is not None,
+                'post_author': post.author.username
+            })
+            
             serializer = CommentSerializer(comment, context={'request': request})
             
             return Response({
@@ -157,7 +177,7 @@ def post_comment(request, post_id):
                 'comments_count': post.comments.count()
             }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        logger.error(f"Comment creation failed: {str(e)}")
+        log_error(f"Comment creation failed: {str(e)}", request, {'post_id': post_id})
         return Response({
             'success': False,
             'message': 'Failed to create comment'
@@ -171,6 +191,10 @@ def _handle_comment_reaction(request, comment_id, reaction_type):
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user == request.user:
+                log_warning(f"User tried to {reaction_type} their own comment", request, {
+                    'comment_id': comment_id,
+                    'reaction_type': reaction_type
+                })
                 return {
                     'success': False,
                     'message': f'You cannot {reaction_type} your own comment'
@@ -185,6 +209,7 @@ def _handle_comment_reaction(request, comment_id, reaction_type):
                 # Remove reaction
                 target_field.remove(request.user)
                 action = f'un{reaction_type}d'
+                log_info(f"User removed {reaction_type} from comment {comment_id}", request)
             else:
                 # Remove opposite reaction if exists
                 opposite_field.remove(request.user)
@@ -202,6 +227,9 @@ def _handle_comment_reaction(request, comment_id, reaction_type):
                         comment=comment,
                         message=f'{request.user.username} {reaction_type}d your comment'
                     )
+                log_info(f"User {reaction_type}d comment {comment_id}", request, {
+                    'comment_author': comment.user.username
+                })
             
             # Get updated counts
             likes_count = comment.likes.count()
@@ -217,7 +245,10 @@ def _handle_comment_reaction(request, comment_id, reaction_type):
             }, status.HTTP_200_OK
             
     except Exception as e:
-        logger.error(f"Comment reaction handling failed: {str(e)}")
+        log_error(f"Comment reaction handling failed: {str(e)}", request, {
+            'comment_id': comment_id,
+            'reaction_type': reaction_type
+        })
         return {
             'success': False,
             'message': 'Reaction operation failed'
@@ -249,18 +280,29 @@ def delete_comment(request, comment_id):
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user != request.user:
+                log_warning(f"User attempted to delete another user's comment", request, {
+                    'comment_id': comment_id,
+                    'actual_owner': comment.user.username
+                })
                 return Response({
                     'success': False,
                     'message': 'You can only delete your own comments'
                 }, status=status.HTTP_403_FORBIDDEN)
             
+            post_id = comment.post.id
             comment.delete()
+            
+            log_audit(f"User deleted comment {comment_id}", request, {
+                'comment_id': comment_id,
+                'post_id': post_id
+            })
+            
             return Response({
                 'success': True,
                 'message': 'Comment deleted successfully'
             }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Comment deletion failed: {str(e)}")
+        log_error(f"Comment deletion failed: {str(e)}", request, {'comment_id': comment_id})
         return Response({
             'success': False,
             'message': 'Failed to delete comment'
@@ -276,6 +318,10 @@ def update_comment(request, comment_id):
             comment = get_object_or_404(Comment, id=comment_id)
             
             if comment.user != request.user:
+                log_warning(f"User attempted to edit another user's comment", request, {
+                    'comment_id': comment_id,
+                    'actual_owner': comment.user.username
+                })
                 return Response({
                     'success': False,
                     'message': 'You can only edit your own comments'
@@ -284,19 +330,29 @@ def update_comment(request, comment_id):
             content = request.data.get('content', '').strip()
             
             if not content:
+                log_warning("Attempt to update comment with empty content", request)
                 return Response({
                     'success': False,
                     'message': 'Comment content is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if len(content) > MAX_COMMENT_CONTENT_LENGTH:
+                log_warning(f"Updated comment too long: {len(content)} characters", request)
                 return Response({
                     'success': False,
                     'message': f'Comment is too long (max {MAX_COMMENT_CONTENT_LENGTH} characters)'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+            old_content = comment.content
             comment.content = content
             comment.save()
+            
+            log_audit(f"User updated comment {comment_id}", request, {
+                'comment_id': comment_id,
+                'post_id': comment.post.id,
+                'old_content_preview': old_content[:50] if old_content else None,
+                'new_content_preview': content[:50]
+            })
             
             serializer = CommentSerializer(comment, context={'request': request})
             
@@ -306,9 +362,8 @@ def update_comment(request, comment_id):
                 'comment': serializer.data
             }, status=status.HTTP_200_OK)
     except Exception as e:
-        logger.error(f"Comment update failed: {str(e)}")
+        log_error(f"Comment update failed: {str(e)}", request, {'comment_id': comment_id})
         return Response({
             'success': False,
             'message': 'Failed to update comment'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
