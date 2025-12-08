@@ -15,4 +15,8 @@ urlpatterns = [
     path('category/<str:category_id>/', views.posts_by_category, name='posts_by_category'),
     path('saved/', views.saved_posts, name='saved_posts'),
     path('users/<str:username>/', views.user_posts, name='user_posts'),
+
+    path('formats/upload/', views.upload_category_format, name='upload_category_format'),
+    path('formats/<str:cat>/', views.get_format, name='get_format'),
+    path('formats/<str:cat>/delete/', views.delete_category_format, name='delete_category_format'),
 ]

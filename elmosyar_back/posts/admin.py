@@ -1,9 +1,16 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Post, PostMedia
+from .models import Post, PostMedia, CategoryFormat
 
-from django.contrib import admin
-from django.utils.html import format_html
+
+# =====================================================
+# Inline برای PostMedia
+# =====================================================
+class PostMediaInline(admin.TabularInline):
+    model = PostMedia
+    extra = 1
+    fields = ['file', 'media_type', 'caption', 'order']
+    readonly_fields = ['created_at']
 
 
 # =====================================================
@@ -21,14 +28,11 @@ class PostAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at', 'likes_count', 'dislikes_count', 'comments_count']
     date_hierarchy = 'created_at'
     filter_horizontal = ['mentions', 'saved_by']
+    inlines = [PostMediaInline]
     
     fieldsets = (
         ('اطلاعات اصلی', {
-            'fields': ('author', 'content', 'category', 'tags')
-        }),
-        ('مدیا', {
-            'fields': ('image', 'video'),
-            'classes': ('collapse',)
+            'fields': ('author', 'content', 'category', 'tags', 'attributes')
         }),
         ('ریپوست', {
             'fields': ('is_repost', 'original_post'),
@@ -61,11 +65,9 @@ class PostAdmin(admin.ModelAdmin):
     
     def has_media(self, obj):
         """نمایش وضعیت مدیا"""
-        has_image = bool(obj.image)
-        has_video = bool(obj.video)
         has_extra_media = obj.media.exists()
         
-        if has_image or has_video or has_extra_media:
+        if has_extra_media:
             return format_html('<span style="color: green;">✓</span>')
         return format_html('<span style="color: red;">✗</span>')
     has_media.short_description = 'مدیا'
@@ -88,6 +90,27 @@ class PostMediaAdmin(admin.ModelAdmin):
         }),
         ('تاریخ', {
             'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+# =====================================================
+# CategoryFormat Admin 
+# =====================================================
+@admin.register(CategoryFormat)
+class CategoryFormatAdmin(admin.ModelAdmin):
+    list_display = ['category', 'created_by', 'created_at', 'updated_at']
+    list_filter = ['created_at']
+    search_fields = ['category', 'created_by__username']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('اطلاعات فرمت', {
+            'fields': ('category', 'format_file', 'created_by')
+        }),
+        ('تاریخ‌ها', {
+            'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
