@@ -277,6 +277,12 @@ class LoginView(APIView):
 
             if not user.is_email_verified:
                 log_warning(f"Login attempt with unverified email: {username_or_email}", request)
+                if not user.is_email_verification_token_valid():
+                    send_verification_email(user)
+                    return Response({
+                        'success': False,
+                        'message': 'Please verify your email first, new verification email sent'
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 return Response({
                     'success': False,
                     'message': 'Please verify your email first'
