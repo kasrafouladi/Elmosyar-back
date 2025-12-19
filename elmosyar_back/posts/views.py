@@ -33,6 +33,7 @@ MAX_MEDIA_FILE_SIZE = 10 * 1024 * 1024
 def apply_advanced_search_filter(queryset, search_json, category):
     """
     اعمال فیلترهای پیشرفته بر اساس JSON جستجو و فرمت دسته‌بندی
+    این تابع از Regex هم برای کلیدها و هم برای مقادیر پشتیبانی می‌کند
     """
     try:
         search_criteria = json.loads(search_json)
@@ -59,44 +60,47 @@ def apply_advanced_search_filter(queryset, search_json, category):
             log_error(f"Error reading format file: {str(e)}")
             raise ValidationError('Error reading format file')
         
-        # فیلتر کردن پست‌ها بر اساس معیارهای جستجو
+        format_keys = format_data.keys()
+
+        not_empty = True
+
+        matching_keys = {}
+
+        for key_regex in search_criteria.keys():
+            # یافتن کلیدهای post_attributes که با key_regex مطابقت دارند
+            matching_keys[key_regex] = []
+            for attr_key in format_keys:
+                try:
+                    if re.match(key_regex, attr_key):
+                        matching_keys[key_regex].append(attr_key)
+                except re.error:
+                    log_error(f"Invalid regex pattern for key matching: {key_regex}")
+                    break
+            if matching_keys[key_regex] == []:
+                not_empty = False
+                break
+        
+        if not not_empty:
+            log_info(f"Advanced search applied: 0 posts matched", None, {
+            'category': category,
+            'search_criteria': search_criteria,
+            'matched_posts': 0
+            })
+            return queryset.filter(id__in=[])
+
         filtered_posts = []
         for post in queryset:
             post_attributes = post.attributes or {}
             match_all_criteria = True
-            
-            for key, regex_pattern in search_criteria.items():
-                # بررسی وجود کلید در attributes پست
-                if key not in post_attributes:
-                    match_all_criteria = False
-                    break
                 
-                # بررسی وجود کلید در فرمت
-                if key not in format_data:
-                    match_all_criteria = False
-                    break
-                
-                # اعتبارسنجی مقدار با regex فرمت
-                value = str(post_attributes[key])
-                try:
-                    if not re.match(format_data[key], value):
-                        match_all_criteria = False
+            for regex_key, possible_keys in matching_keys:
+                match_all_criteria = False
+                for key in possible_keys:
+                    if re.match(search_criteria[regex_key], post_attributes[key]):
+                        match_all_criteria = True
                         break
-                except re.error:
-                    log_error(f"Invalid regex pattern in format for key {key}: {format_data[key]}")
-                    match_all_criteria = False
+                if not match_all_criteria:
                     break
-                
-                # اعمال regex جستجوی کاربر (اگر در search_criteria آمده باشد)
-                if regex_pattern:
-                    try:
-                        if not re.match(regex_pattern, value):
-                            match_all_criteria = False
-                            break
-                    except re.error:
-                        log_error(f"Invalid regex pattern in search for key {key}: {regex_pattern}")
-                        match_all_criteria = False
-                        break
             
             if match_all_criteria:
                 filtered_posts.append(post.id)
@@ -301,7 +305,7 @@ def posts_list_create(request):
                 log_warning("Post creation without category for main post", request)
                 return Response({
                     'success': False,
-                    'message': 'Room/Category is required'
+                    'message': 'Category is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # اعتبارسنجی attributes بر اساس فرمت دسته‌بندی
