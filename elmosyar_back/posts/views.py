@@ -93,7 +93,7 @@ def apply_advanced_search_filter(queryset, search_json, category):
             post_attributes = post.attributes or {}
             match_all_criteria = True
                 
-            for regex_key, possible_keys in matching_keys:
+            for regex_key, possible_keys in matching_keys.items():
                 match_all_criteria = False
                 for key in possible_keys:
                     if re.match(search_criteria[regex_key], post_attributes[key]):
