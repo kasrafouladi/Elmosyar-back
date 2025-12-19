@@ -1885,6 +1885,18 @@ Posts being purchased must have the following attributes structure:
 
 ## 📁 Log File Management
 
+### Via Admin Panel (others are just for command line):
+
+```text
+|-admin/
+  |-logs/
+    |-viewer/
+    |-download/
+    |-clear/
+    |-statistics/
+```
+
+
 ### List Log Files
 **GET** `/api/logs/files/`
 
