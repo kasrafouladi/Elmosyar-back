@@ -1,0 +1,246 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}مدیریت فایل‌های لاگ{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .log-files-container {
+        padding: 20px;
+    }
+    
+    .stats-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #666;
+        font-size: 14px;
+        font-weight: normal;
+    }
+    
+    .stat-card .value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #417690;
+    }
+    
+    .log-files-table {
+        width: 100%;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .log-files-table table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .log-files-table th {
+        background: #417690;
+        color: white;
+        padding: 12px;
+        text-align: right;
+        font-weight: bold;
+    }
+    
+    .log-files-table td {
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .log-files-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .btn {
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 13px;
+        border: none;
+        cursor: pointer;
+        display: inline-block;
+    }
+    
+    .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    
+    .btn-success {
+        background: #28a745;
+        color: white;
+    }
+    
+    .btn-warning {
+        background: #ffc107;
+        color: #000;
+    }
+    
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .btn:hover {
+        opacity: 0.9;
+    }
+    
+    .preview-box {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        margin-top: 5px;
+        max-height: 100px;
+        overflow-y: auto;
+    }
+    
+    .preview-line {
+        margin: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">خانه</a>
+    &rsaquo; مدیریت لاگ‌ها
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="log-files-container">
+    <h1>🔍 مدیریت فایل‌های لاگ</h1>
+    
+    <div class="stats-cards">
+        <div class="stat-card">
+            <h3>تعداد فایل‌ها</h3>
+            <div class="value">{{ total_files }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>حجم کل</h3>
+            <div class="value">{{ total_size }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>مسیر لاگ‌ها</h3>
+            <div class="value" style="font-size: 14px;">{{ log_dir }}</div>
+        </div>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+        <a href="{% url 'admin:log_statistics' %}" class="btn btn-primary">
+            📊 مشاهده آمار و تحلیل
+        </a>
+    </div>
+    
+    <div class="log-files-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>نام فایل</th>
+                    <th>حجم</th>
+                    <th>آخرین تغییر</th>
+                    <th>پیش‌نمایش</th>
+                    <th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in log_files %}
+                <tr>
+                    <td><strong>{{ file.name }}</strong></td>
+                    <td>{{ file.size_human }}</td>
+                    <td>{{ file.modified|date:"Y-m-d H:i:s" }}</td>
+                    <td>
+                        {% if file.preview %}
+                        <div class="preview-box">
+                            {% for line in file.preview %}
+                            <div class="preview-line">{{ line }}</div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{% url 'admin:log_viewer' %}?file={{ file.name }}" 
+                               class="btn btn-primary">
+                                👁️ مشاهده
+                            </a>
+                            <a href="{% url 'admin:log_download' %}?file={{ file.name }}" 
+                               class="btn btn-success">
+                                ⬇️ دانلود
+                            </a>
+                            <button onclick="clearLogFile('{{ file.name }}')" 
+                                    class="btn btn-danger">
+                                🗑️ پاک کردن
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 40px;">
+                        هیچ فایل لاگی یافت نشد
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function clearLogFile(fileName) {
+    if (!confirm(`آیا از پاک کردن فایل "${fileName}" اطمینان دارید؟`)) {
+        return;
+    }
+    
+    fetch("{% url 'admin:log_clear' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: `file=${fileName}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('خطا: ' + (data.error || 'عملیات ناموفق'));
+        }
+    })
+    .catch(error => {
+        alert('خطا در ارتباط با سرور');
+        console.error(error);
+    });
+}
+</script>
+{% endblock %}
