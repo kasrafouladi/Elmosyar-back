@@ -967,7 +967,7 @@ def upload_category_format(request):
 
         log_audit(f"Category format uploaded/updated", request, {
             'category': category,
-            'created': created,
+            'created_flag': created,
             'format_id': format_obj.id,
             'file_size': format_file.size,
             'keys_count': len(format_data.keys()) if format_data else 0
