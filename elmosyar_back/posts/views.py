@@ -157,6 +157,7 @@ def validate_post_update_attributes(post, attributes, category):
     """
     اعتبارسنجی attributes برای به‌روزرسانی پست
     """
+
     if not category:
         return True, None
     
@@ -169,6 +170,14 @@ def validate_post_update_attributes(post, attributes, category):
             format_data = json.load(f)
         
         # اگر attributes جدید ارسال شده
+        # تبدیل attributes از string به dictionary اگر لازم باشد
+        if attributes and isinstance(attributes, str):
+            try:
+                attributes = json.loads(attributes)
+            except json.JSONDecodeError:
+                log_warning(f"Invalid JSON in attributes string")
+                return False, 'Attributes must be valid JSON'
+
         if attributes is not None:
             post_attributes = post.attributes or {}
             merged_attributes = {**post_attributes, **attributes}
