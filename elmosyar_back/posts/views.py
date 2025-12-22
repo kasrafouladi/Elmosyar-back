@@ -983,9 +983,12 @@ def upload_category_format(request):
 
     except Exception as e:
         log_error(f"Format upload failed: {str(e)}", request)
+        # Return detailed error when in DEBUG to aid debugging; keep generic otherwise
+        detail = str(e) if getattr(settings, 'DEBUG', False) else 'Failed to upload format'
         return Response({
             'success': False,
-            'message': 'Failed to upload format'
+            'message': 'Failed to upload format',
+            'error': detail
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

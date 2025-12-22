@@ -1590,7 +1590,7 @@ curl -X PUT http://89.106.206.119:8000/api/messages/1/update/ \
 
 ### Upload Category Format (Superuser Only)
 ```bash
-curl -X POST http://89.106.206.119:8000/api/formats/upload/ \
+curl -X POST http://89.106.206.119:8000/api/posts/formats/upload/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: multipart/form-data" \
   -F "category=programming" \
@@ -1627,7 +1627,7 @@ curl -X POST http://89.106.206.119:8000/api/formats/upload/ \
 
 ### Get Category Format (Public)
 ```bash
-curl -X GET http://89.106.206.119:8000/api/formats/programming/
+curl -X GET http://89.106.206.119:8000/posts/api/formats/programming/
 ```
 
 **Response:**
@@ -1656,7 +1656,7 @@ curl -X GET http://89.106.206.119:8000/api/formats/programming/
 
 ### Delete Category Format (Superuser Only)
 ```bash
-curl -X DELETE http://89.106.206.119:8000/api/formats/programming/delete/ \
+curl -X DELETE http://89.106.206.119:8000/posts/api/formats/programming/delete/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: application/json"
 ```
