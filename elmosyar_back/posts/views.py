@@ -143,7 +143,13 @@ def validate_post_attributes(attributes, category):
         for key, value in attributes.items():
             if key in format_data:
                 # اعتبارسنجی با regex فرمت
-                if not re.match(format_data[key], str(value)):
+                # اگر مقدار لیست یا دیکشنری است، آن را به JSON تبدیل کن
+                if isinstance(value, (list, dict)):
+                    value_to_check = json.dumps(value, ensure_ascii=False)
+                else:
+                    value_to_check = str(value)
+
+                if not re.match(format_data[key], value_to_check):
                     log_warning(f"Attribute validation failed: {key}={value} doesn't match pattern")
                     return False, f'Attribute "{key}" does not match format pattern'
         
@@ -178,7 +184,13 @@ def validate_post_update_attributes(post, attributes, category):
             for key, value in merged_attributes.items():
                 if key in format_data:
                     # اعتبارسنجی با regex فرمت
-                    if not re.match(format_data[key], str(value)):
+                    # اگر مقدار لیست یا دیکشنری است، آن را به JSON تبدیل کن تا با regex سازگار باشد
+                    if isinstance(value, (list, dict)):
+                        value_to_check = json.dumps(value, ensure_ascii=False)
+                    else:
+                        value_to_check = str(value)
+
+                    if not re.match(format_data[key], value_to_check):
                         log_warning(f"Update attribute validation failed: {key}={value}")
                         return False, f'Attribute "{key}" does not match format pattern'
             
